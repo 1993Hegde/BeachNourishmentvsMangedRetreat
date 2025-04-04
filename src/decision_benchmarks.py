@@ -406,3 +406,60 @@ def compute_coastal_cost_metrics(
     C = nourishCost + relocateCost + damageCost + feasibilityCost
 
     return C, nourishCost, relocateCost, damageCost
+
+def compute_coastal_benefits(
+    X: np.ndarray,
+    pars: Dict[str, Any],
+    x: np.ndarray,
+    V: np.ndarray,
+    L: np.ndarray,
+    E: np.ndarray
+) -> np.ndarray:
+    """
+    This function calculates the total benefits (from location and beach 
+    amenities) for a coastal model using precomputed values.
+
+    :param X: A 2D numpy array (state-action matrix) of shape (n, k).
+              Although not used directly in this function, it is included 
+              for consistency with the overall model interface.
+    :type X: np.ndarray
+
+    :param pars: A dictionary containing model parameters with keys:
+        - "l"   (float): factor for location-based benefit
+        - "eta" (float): factor for beach-based benefit
+      Additional keys may exist for other purposes in the full model.
+    :type pars: Dict[str, Any]
+
+    :param x: 1D numpy array of shape (n,) representing the precomputed 
+              beach widths.
+    :type x: np.ndarray
+
+    :param V: 1D numpy array of shape (n,) representing the precomputed 
+              property valuations.
+    :type V: np.ndarray
+
+    :param L: 1D numpy array of shape (n,) representing the precomputed 
+              sea-level rise values. It is not used in this function but 
+              is included for consistency.
+    :type L: np.ndarray
+
+    :param E: 1D numpy array of shape (n,) representing the precomputed 
+              erosion values. It is not used in this function but is included 
+              for consistency.
+    :type E: np.ndarray
+
+    :return: A 1D numpy array of shape (n,) where each element is the total 
+             benefit (location benefit plus beach benefit).
+    :rtype: np.ndarray
+    """
+
+    # Compute location-based benefits
+    B_location = pars["l"] * V
+
+    # Compute beach-based benefits
+    B_beach = pars["eta"] * x
+
+    # Total benefits
+    B = B_location + B_beach
+
+    return B
