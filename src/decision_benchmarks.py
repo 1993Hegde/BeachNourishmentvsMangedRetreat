@@ -628,3 +628,96 @@ def build_sparse_transition_matrix(
     Q = Q.tocsr()
 
     return Q, s_indices, a_indices
+
+
+def simulate_mdp_trajectory(
+    initial_state_index: int,
+    S: List[Tuple[int, ...]],
+    Ix: np.ndarray,
+    X: np.ndarray,
+    pars: Dict[str, Any]
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Simulates a Markov Decision Process (MDP) trajectory for a specified 
+    number of time steps. The policy is implicitly defined by the array Ix, 
+    which indicates the row in X (a state-action matrix) to use for each 
+    state index.
+
+    At each time step t:
+      1. The function looks up the current state index (Si[t-1]).
+      2. It retrieves an action from the row X[ Xi[t-1] ] (i.e., the last 
+         element in that row is assumed to be the action).
+      3. It computes the next state using compute_new_state.
+      4. It then finds the index of this new state in S.
+      5. It sets Xi[t] to the row index from Ix corresponding to that new state.
+
+    :param initial_state_index: The index of the initial state in S.
+    :type initial_state_index: int
+
+    :param S: A list of all possible states in the system. Each element is a 
+              tuple (or list) describing a unique state, e.g. 
+              (tau, t, relocation_status, nourishment_indicator).
+    :type S: List[Tuple[int, ...]]
+
+    :param Ix: A NumPy array (or list) of length len(S), where Ix[i] gives 
+               the row index in X that should be used for state i. 
+               This effectively encodes a policy: for state i, use X[ Ix[i] ].
+    :type Ix: np.ndarray
+
+    :param X: A 2D NumPy array (or matrix) whose rows typically represent 
+              a state-action combination. The last column is assumed to 
+              represent the action. E.g., X[j, :-1] might be a state, and 
+              X[j, -1] is the action.
+    :type X: np.ndarray
+
+    :param pars: A dictionary of parameters for the MDP simulation, which 
+                 must include:
+                 - "sim_length" (int): The number of time steps to simulate.
+                 Other keys may be needed for compute_new_state.
+    :type pars: Dict[str, Any]
+
+    :return: 
+        - Xi (np.ndarray): An array of length sim_length containing the indices 
+          into X (the state-action matrix) used at each time step.
+        - Si (np.ndarray): An array of length sim_length containing the indices 
+          into S (the list of possible states) for each time step.
+    :rtype: Tuple[np.ndarray, np.ndarray]
+    """
+
+    sim_length = pars["sim_length"]
+
+    # Arrays to store the trajectory of state and state-action indices
+    Si = np.zeros(sim_length, dtype=int)
+    Xi = np.zeros(sim_length, dtype=int)
+
+    # Initialize with the provided starting state index
+    Si[0] = initial_state_index
+    # The initial "policy" selection in X comes from Ix for that state
+    Xi[0] = Ix[initial_state_index]
+
+    for t in range(1, sim_length):
+        # Current state (index) from the previous time step
+        s_current_index = Si[t - 1]
+        # Row in X that encodes the action for this state
+        x_index = Xi[t - 1]
+
+        # Extract the action from X. We assume the last element in X[x_index] is the action
+        action = X[x_index, -1]
+
+        # Convert the current state (a tuple) to a list (if needed) for compute_new_state
+        old_state = list(S[s_current_index][0:-1])  # or simply list(S[s_current_index]) if that's appropriate
+        
+        # Compute the next state
+        new_state = compute_new_state(old_state, action, pars)
+
+        # Convert next state to a tuple so we can look it up in S
+        new_state_tuple = tuple(new_state)
+        
+        # Find the index of the new state in S
+        s_next_index = S.index(new_state_tuple)
+        Si[t] = s_next_index
+
+        # Determine the row in X that corresponds to this new state under our policy
+        Xi[t] = Ix[s_next_index]
+
+    return Xi, Si
