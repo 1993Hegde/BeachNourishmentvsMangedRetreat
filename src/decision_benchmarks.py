@@ -1,5 +1,6 @@
 import numpy as np
 import math
+from typing import Dict, Any, Tuple, Optional
 from scipy.stats import poisson
 import matplotlib.pyplot as plt
 from itertools import product
@@ -156,3 +157,119 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     pars["TMin"] = 10
     pars["Tmax"] = 10000
     return pars
+
+def compute_coastal_state_variables(
+    X: np.ndarray,
+    pars: Dict[str, Any],
+    E: Optional[np.ndarray] = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    This function calculates the beach width, property valuation, sea-level rise, 
+    and storm-induced erosion across different states in the model.
+
+    :param X: A 2D numpy array of shape (n, 4) representing the state-action matrix.
+        Data types of columns in X (float):
+        - X[:, 0]: tau (time of last nourishment)
+        - X[:, 1]: t   (current time)
+        - X[:, 2]: R   (relocation time)
+        - X[:, 3]: nourishing (binary indicator)
+    :type X: np.ndarray
+
+    :param pars: A dictionary containing model parameters with keys:
+        - 'a' (float)
+        - 'b' (float)
+        - 'Ti' (int or float)
+        - 'r' (float)
+        - 'H' (float)
+        - 'E' (float, optional)
+        - 'epsilon' (float)
+        - 'mu' (float)
+        - 'theta' (float)
+        - 'x_nourished' (float)
+        - 'relocationDelay' (float)
+        - 'd' (float)
+        - 'A' (float)
+        - 'alpha' (float)
+        - 'beta' (float)
+    :type pars: Dict[str, Any]
+
+    :param E: (Optional) A 1D numpy array or None, representing storm-induced 
+              erosion values. If not provided, it will be computed within the 
+              function.
+    :type E: Optional[np.ndarray]
+
+    :return: A tuple containing:
+             - x: 1D numpy array of computed beach width values.
+             - V: 1D numpy array of computed property valuation values.
+             - L: 1D numpy array of computed sea-level rise values.
+             - E: 1D numpy array of storm-induced erosion values (either 
+                  provided or computed).
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    """
+
+    # Handle the default for E if None is provided
+    if E is None:
+        E = np.array([])
+
+    # Convert X to float
+    X = X.astype(float)
+
+    # Unpack columns of X
+    t = X[:, 1]
+    tau = X[:, 0]
+    R = X[:, 2]
+    nourishing = X[:, 3]
+
+    # Compute sea-level rise (L) and its integral (L_int)
+    L = pars["a"] * t + pars["b"] * (t**2 + 2 * t * (pars["Ti"] - 1992))
+    L = np.around(L, 4)
+    L_int = 0.5 * pars["a"] * t**2 + pars["b"] * (
+        t**3 / 3 + t**2 * (pars["Ti"] - 1992)
+    )
+    L_int = np.round(L_int, 4)
+
+    # Compute storm-induced erosion (E) if not provided
+    if "E" in pars and E.size == 0:
+        E = pars["E"] * tau + pars["epsilon"] * L_int
+        E = np.round(E, 4)
+
+    # Compute gamma_erosion
+    condition = (tau > 0) & (t > 0) & (t >= tau)
+    gamma_erosion = np.zeros_like(t)
+    L_t = pars["a"] * t + pars["b"] * (t**2 + 2 * t * (pars["Ti"] - 1992))
+    L_tau = pars["a"] * (t - tau) + pars["b"] * (
+        (t - tau) ** 2 + 2 * (t - tau) * (pars["Ti"] - 1992)
+    )
+    same_tau_t = tau == t
+    diff_tau_t = tau != t
+
+    gamma_erosion[condition & same_tau_t] = (
+        pars["r"] * L_t[condition & same_tau_t]
+        - pars["H"] * t[condition & same_tau_t]
+    )
+    gamma_erosion[condition & diff_tau_t] = (
+        pars["r"] * (L_t[condition & diff_tau_t] - L_tau[condition & diff_tau_t])
+        - pars["H"] * tau[condition & diff_tau_t]
+    )
+
+    # Compute beach width (x)
+    term1 = pars["x_nourished"] * nourishing
+    term2 = (
+        (1 - pars["mu"]) * pars["x_nourished"]
+        + pars["mu"] * np.exp(-pars["theta"] * tau) * pars["x_nourished"]
+        - gamma_erosion
+        - E
+    )
+    term2 = np.maximum(term2, 0) * (1 - nourishing)
+    x = term1 + term2
+
+    # Compute property valuation (V)
+    condition = R <= pars["relocationDelay"]
+    V = np.where(
+        condition,
+        ((1 + pars["d"]) ** t) * pars["A"] * (pars["alpha"] ** x) * (pars["beta"] ** L),
+        0,
+    )
+    V = np.round(V, 4)
+
+    return x, V, L, E
