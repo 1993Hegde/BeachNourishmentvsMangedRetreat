@@ -628,3 +628,304 @@ def build_sparse_transition_matrix(
     Q = Q.tocsr()
 
     return Q, s_indices, a_indices
+
+
+def simulate_mdp_trajectory(
+    initial_state_index: int,
+    S: List[Tuple[int, ...]],
+    Ix: np.ndarray,
+    X: np.ndarray,
+    pars: Dict[str, Any]
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Simulates a Markov Decision Process (MDP) trajectory for a specified 
+    number of time steps. The policy is implicitly defined by the array Ix, 
+    which indicates the row in X (a state-action matrix) to use for each 
+    state index.
+
+    At each time step t:
+      1. The function looks up the current state index (Si[t-1]).
+      2. It retrieves an action from the row X[ Xi[t-1] ] (i.e., the last 
+         element in that row is assumed to be the action).
+      3. It computes the next state using compute_new_state.
+      4. It then finds the index of this new state in S.
+      5. It sets Xi[t] to the row index from Ix corresponding to that new state.
+
+    :param initial_state_index: The index of the initial state in S.
+    :type initial_state_index: int
+
+    :param S: A list of all possible states in the system. Each element is a 
+              tuple (or list) describing a unique state, e.g. 
+              (tau, t, relocation_status, nourishment_indicator).
+    :type S: List[Tuple[int, ...]]
+
+    :param Ix: A NumPy array (or list) of length len(S), where Ix[i] gives 
+               the row index in X that should be used for state i. 
+               This effectively encodes a policy: for state i, use X[ Ix[i] ].
+    :type Ix: np.ndarray
+
+    :param X: A 2D NumPy array (or matrix) whose rows typically represent 
+              a state-action combination. The last column is assumed to 
+              represent the action. E.g., X[j, :-1] might be a state, and 
+              X[j, -1] is the action.
+    :type X: np.ndarray
+
+    :param pars: A dictionary of parameters for the MDP simulation, which 
+                 must include:
+                 - "sim_length" (int): The number of time steps to simulate.
+                 Other keys may be needed for compute_new_state.
+    :type pars: Dict[str, Any]
+
+    :return: 
+        - Xi (np.ndarray): An array of length sim_length containing the indices 
+          into X (the state-action matrix) used at each time step.
+        - Si (np.ndarray): An array of length sim_length containing the indices 
+          into S (the list of possible states) for each time step.
+    :rtype: Tuple[np.ndarray, np.ndarray]
+    """
+
+    sim_length = pars["sim_length"]
+
+    # Arrays to store the trajectory of state and state-action indices
+    Si = np.zeros(sim_length, dtype=int)
+    Xi = np.zeros(sim_length, dtype=int)
+
+    # Initialize with the provided starting state index
+    Si[0] = initial_state_index
+    # The initial "policy" selection in X comes from Ix for that state
+    Xi[0] = Ix[initial_state_index]
+
+    for t in range(1, sim_length):
+        # Current state (index) from the previous time step
+        s_current_index = Si[t - 1]
+        # Row in X that encodes the action for this state
+        x_index = Xi[t - 1]
+
+        # Extract the action from X. We assume the last element in X[x_index] is the action
+        action = X[x_index, -1]
+
+        # Convert the current state (a tuple) to a list (if needed) for compute_new_state
+        old_state = list(S[s_current_index][0:-1])  # or simply list(S[s_current_index]) if that's appropriate
+        
+        # Compute the next state
+        new_state = transition_observed_state(old_state, action, pars)
+
+        # Convert next state to a tuple so we can look it up in S
+        new_state_tuple = tuple(new_state)
+        
+        # Find the index of the new state in S
+        s_next_index = S.index(new_state_tuple)
+        Si[t] = s_next_index
+
+        # Determine the row in X that corresponds to this new state under our policy
+        Xi[t] = Ix[s_next_index]
+
+    return Xi, Si
+
+def solve_DDP_return_NPV_action_sequence(
+    R: np.ndarray,
+    Q_sparse: csr_matrix,
+    pars: Dict[str, Any],
+    S: List[Tuple[int, int, int, int]],
+    X: np.ndarray,
+    S0i: int,
+    s_indices: List[int],
+    a_indices: List[int]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Solves a Discrete Dynamic Programming (DDP) model (via value iteration),
+    simulates the resulting optimal policy, and returns key metrics including 
+    net present value (NPV).
+
+    :param R: A 1D NumPy array of shape (n_state_action,) representing the 
+              immediate reward for each (state, action) pair.
+    :type R: np.ndarray
+
+    :param Q_sparse: A sparse transition probability matrix (CSR format) of 
+                     shape (n_state_action, n_states). Each row corresponds 
+                     to a (state, action) pair, and each column corresponds 
+                     to the next-state index.
+    :type Q_sparse: csr_matrix
+
+    :param pars: A dictionary of model parameters required by quantecon and 
+                 downstream functions, which must include:
+                 - "delta" (float): discount rate
+                 - "sim_length" (int): number of time steps in the simulation
+                 Additional parameters may be needed by xVLE, compute_cost, 
+                 and compute_benefits.
+    :type pars: Dict[str, Any]
+
+    :param S: A list of all possible states in the model. Each state is 
+              typically a tuple (tau, time, relocation_status, nourished_indicator).
+    :type S: List[Tuple[int, int, int, int]]
+
+    :param X: A 2D NumPy array where each row corresponds to a (state, action) 
+              combination. For instance, X[i, :-1] might be a state, and 
+              X[i, -1] the corresponding action.
+    :type X: np.ndarray
+
+    :param S0i: The index (in S) of the initial state.
+    :type S0i: int
+
+    :param s_indices: A list mapping each row of Q_sparse (and R) to the 
+                      appropriate state index in S.
+    :type s_indices: List[int]
+
+    :param a_indices: A list mapping each row of Q_sparse (and R) to the 
+                      appropriate action index in your action set.
+    :type a_indices: List[int]
+
+    :return: A tuple containing:
+        1. optS (np.ndarray): The (state, action) pairs chosen over the 
+           simulation horizon.
+        2. x_final (np.ndarray): Beach width at each time step.
+        3. v_final (np.ndarray): Property valuation at each time step.
+        4. L_final (np.ndarray): Sea-level rise at each time step.
+        5. C_final (np.ndarray): Total cost at each time step.
+        6. B_final (np.ndarray): Total benefit at each time step.
+        7. accumulated_npv (float): The total accumulated net present value 
+           over the simulation horizon.
+        8. strategy (np.ndarray): The action chosen at each time step (last 
+           column of optS).
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+                  np.ndarray, np.ndarray, float, np.ndarray]
+    """
+
+    # 1) Build and solve the DDP using quantecon
+    beta = 1 / (1 + pars["delta"])
+    ddp = qe.markov.DiscreteDP(R, Q_sparse, beta, s_indices, a_indices)
+    results = ddp.solve(method='value_iteration')
+
+    # 2) Construct the optimal (state, action) array from the policy
+    S_array = np.array(S)
+    sigma_array = np.array(results.sigma).reshape(len(results.sigma), 1)
+    results.Xopt = np.hstack([S_array, sigma_array])
+
+    # 3) Convert the (state, action) combos to the corresponding rows in X
+    results.Ixopt = []
+    for row in results.Xopt:
+        # row[:-1] is the state, row[-1] is the action
+        idx = np.where(np.all(X == row, axis=1))[0][0]
+        results.Ixopt.append(idx)
+    results.Ixopt = np.array(results.Ixopt)
+    Ix = results.Ixopt
+
+    # 4) Simulate from the initial state using the computed policy
+    Xi, Si = mdpsim_inf(S0i, S, Ix, X, pars)
+    optS = X[Xi]  # Full (state, action) pairs over time
+
+    # 5) Compute relevant coastal model metrics
+    x_final, v_final, L_final, E_final = compute_coastal_state_variables(optS, pars)
+    C_final, nourish_cost_final, relocate_cost_final, damage_cost_final = compute_coastal_cost_metrics(optS, pars,x_final, v_final, L_final, E_final)
+    B_final = compute_coastal_benefits(optS, pars,x_final, v_final, L_final, E_final)
+
+    # 6) Discount future costs/benefits and compute net present value
+    df = [(1 + pars["delta"]) ** i for i in range(pars["sim_length"])]
+    individual_benefits = [B_final[i] / df[i] for i in range(pars["sim_length"])]
+    individual_costs = [C_final[i] / df[i] for i in range(pars["sim_length"])]
+    individual_npv = [(B_final[i] - C_final[i]) / df[i] for i in range(pars["sim_length"])]
+
+    # 7) Get the final accumulated NPV and action strategy
+    accumulated_npv = np.cumsum(individual_npv)[-1]
+    strategy = optS[:, -1]
+
+    return optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy
+
+
+def solve_cutler_et_al_ddp(
+    pars: Dict[str, Any], 
+    initial_state: Tuple[int, int, int, int]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Sets up and solves the coastal DDP model using the approach described 
+    by "Cutler et al." (as referenced in your code base). This involves:
+      1. Defining the state space (tau, time, relocation, nourished).
+      2. Defining the action space (0, 1, 2).
+      3. Creating all (state, action) pairs (X) and the base set of states (S).
+      4. Building a transition matrix (Q_sparse).
+      5. Computing costs (C), benefits (B), and immediate rewards (R).
+      6. Solving the DDP via `solve_DDP_return_NPV_action_sequence`.
+      7. Returning the optimal path and relevant metrics.
+
+    :param pars: A dictionary of parameters needed to define the model. 
+                 Must include:
+                 - "sim_length" (int)
+                 - "deltaT" (int): The increment in tau/time to build the state space
+                 - "delta" (float): Discount rate
+                 Additional keys may be needed by other functions 
+                 (xVLE, compute_cost, compute_benefits).
+    :type pars: Dict[str, Any]
+
+    :param initial_state: A tuple defining the initial state in the form 
+                          (tau, time, relocation, nourished).
+    :type initial_state: Tuple[int, int, int, int]
+
+    :return: A tuple containing the same outputs as solve_DDP_return_NPV_action_sequence:
+        1. optS (np.ndarray): The (state, action) pairs chosen over the 
+           simulation horizon.
+        2. x_final (np.ndarray): Beach width at each time step.
+        3. v_final (np.ndarray): Property valuation at each time step.
+        4. L_final (np.ndarray): Sea-level rise at each time step.
+        5. C_final (np.ndarray): Total cost at each time step.
+        6. B_final (np.ndarray): Total benefit at each time step.
+        7. accumulated_npv (float): The total accumulated net present value 
+           over the simulation horizon.
+        8. strategy (np.ndarray): The action chosen at each time step (last 
+           column of the resulting path).
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+                  np.ndarray, np.ndarray, float, np.ndarray]
+    """
+
+    # 1. Define action space
+    A = [0, 1, 2]
+
+    # 2. Define the discrete values for tau (time since last nourishment)
+    #    and time (current simulation year/step)
+    tau = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+    time = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+
+    # 3. Define possible states for relocation and nourishment indicators
+    relocation = [0, 1, 2]
+    nourished = [0, 1]
+
+    # 4. Build the full set of (state, action) combos: X, and just states: S
+    X = list(product(tau, time, relocation, nourished, A))
+    S = list(product(tau, time, relocation, nourished))
+
+    # Convert to NumPy arrays for downstream use
+    X_pr = np.array(X)
+
+    # 5. Build the sparse transition matrix
+    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(S, A, X_pr, pars)
+
+    # 6. Compute the coastal metrics for each (state, action) in X
+    #    Here xVLE and compute_cost/compute_benefits can handle either list or array,
+    #    as long as shapes match the function definitions.
+    x_vals, v_vals, L_vals, E_vals = compute_coastal_state_variables(X_pr, pars)
+    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X, pars)
+    B_vals = compute_coastal_benefits(X, pars)
+
+    # Convert X back to NumPy array for consistent indexing in the solver
+    X_np = np.array(X)
+
+    # 7. Build the immediate reward array R = B - C
+    R = np.array([B_vals[i] - C_vals[i] for i in range(len(B_vals))])
+
+    # 8. Locate the initial state's index in S
+    S0i = S.index(tuple(initial_state))
+
+    # 9. Solve and simulate the DDP
+    (
+        optS, 
+        x_final, 
+        v_final, 
+        L_final, 
+        C_final, 
+        B_final, 
+        accumulated_npv, 
+        strategy
+    ) = solve_DDP_return_NPV_action_sequence(
+        R, Q_sparse, pars, S, X_np, S0i, s_indices, a_indices
+    )
+
+    return optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy
