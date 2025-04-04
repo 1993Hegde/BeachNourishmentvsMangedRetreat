@@ -275,7 +275,7 @@ def compute_coastal_state_variables(
     return x, V, L, E
 
 
-def compute_cost_metrics(
+def compute_coastal_cost_metrics(
     X: np.ndarray,
     pars: Dict[str, Any],
     x: np.ndarray,
