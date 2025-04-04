@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, List, Optional
 from scipy.stats import poisson
 import matplotlib.pyplot as plt
 from itertools import product
@@ -463,3 +463,91 @@ def compute_coastal_benefits(
     B = B_location + B_beach
 
     return B
+
+def transition_observed_state(
+    old_state: List[int],
+    action: int,
+    pars: Dict[str, Any]
+) -> List[int]:
+    """
+    Computes the new state of the coastal system given the old state 
+    and an action.
+
+    The state is assumed to be a 4-element list:
+        - state[0]: Time (in discrete steps) since the last nourishment (tau).
+        - state[1]: Current simulation time step (t).
+        - state[2]: Relocation status (e.g., 0 = not relocating, 1 = planning 
+                    to relocate, 2 = relocated).
+        - state[3]: Nourishment indicator (e.g., 0 = not nourishing, 1 = nourishing).
+
+    Actions (integer) might be defined as:
+        - 0: Do nothing.
+        - 1: Nourish.
+        - 2: Relocate (or move toward relocation if not already in progress).
+
+    The function updates elements of the state vector to reflect the
+    chosen action, then ensures neither time since last nourishment (state[0])
+    nor the current time step (state[1]) exceed the simulation length defined 
+    in `pars["sim_length"]`.
+
+    :param old_state: The current state of the system, a list of four integers.
+    :type old_state: List[int]
+
+    :param action: An integer representing the chosen action:
+                   0 = do nothing, 1 = nourish, 2 = relocate.
+    :type action: int
+
+    :param pars: A dictionary of model parameters, 
+                 which must include at least:
+                 - "sim_length" (int): The maximum time step for the simulation.
+    :type pars: Dict[str, Any]
+
+    :return: The new state of the system (a list of four integers).
+    :rtype: List[int]
+    """
+
+    # Initialize the new state with placeholders
+    new_state = [0, 0, 0, 0]
+
+    # 1) Increment current simulation time (old_state[1]) by 1.
+    new_state[1] = old_state[1] + 1
+
+    # 2) If relocation status was 1 (planning to relocate), move it to 2 (relocated).
+    if old_state[2] == 1:
+        new_state[2] = 2
+
+    # 3) Transition logic based on action
+    if action == 0:
+        # Action 0: Do nothing
+        new_state[0] = old_state[0] + 1   # Increase time since last nourishment
+        new_state[2] = old_state[2]      # Keep relocation status
+        new_state[3] = 0                 # Not nourishing
+
+    elif action == 1:
+        # Action 1: Nourish
+        new_state[0] = 0                 # Reset time since last nourishment
+        new_state[2] = old_state[2]      # Keep relocation status
+        new_state[3] = 1                 # Nourishing
+
+    elif action == 2:
+        # Action 2: Relocate (or plan to relocate)
+        new_state[0] = old_state[0] + 1  # Increase time since last nourishment
+        new_state[3] = 0                 # Not nourishing
+
+        # If currently not relocating (0), switch to planning to relocate (1)
+        if old_state[2] == 0:
+            new_state[2] = 1
+        else:
+            # Otherwise, carry forward whatever relocation status was there
+            new_state[2] = old_state[2]
+
+    # Ensure if relocation status was 1 in old_state, it's set to 2 in new_state.
+    # (Duplicating the check here in case of multiple logic paths.)
+    if old_state[2] == 1:
+        new_state[2] = 2
+
+    # 4) Enforce simulation length constraints
+    new_state[0] = min(new_state[0], pars["sim_length"])
+    new_state[1] = min(new_state[1], pars["sim_length"])
+
+    return new_state
