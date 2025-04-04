@@ -273,3 +273,136 @@ def compute_coastal_state_variables(
     V = np.round(V, 4)
 
     return x, V, L, E
+
+
+def compute_cost_metrics(
+    X: np.ndarray,
+    pars: Dict[str, Any],
+    x: np.ndarray,
+    V: np.ndarray,
+    L: np.ndarray,
+    E: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    This function calculates various cost metrics (nourishment cost, relocation cost,
+    damage cost) and their total sum for a coastal model. It uses pre-computed
+    beach width (`x`), property valuation (`V`), sea-level rise (`L`), and 
+    erosion (`E`).
+
+    :param X: A 2D numpy array of shape (n, 5) representing the state-action matrix:
+        - X[:, 0] = tau (time of last nourishment)
+        - X[:, 1] = t   (current time)
+        - X[:, 2] = R   (relocation time)
+        - X[:, 3] = nourishing (binary indicator)
+        - X[:, 4] = A   (binary indicator for action/decision)
+      This must be of type float or castable to float.
+
+    :type X: np.ndarray
+
+    :param pars: A dictionary containing model parameters with keys such as:
+        - "c1" (float): fixed cost of nourishment
+        - "c2" (float): additional cost factor for nourishment
+        - "xi" (float): cost escalation rate 
+        - "constructionCosts" (float): construction costs for nourishment
+        - "rho" (float): fraction of valuation lost upon relocation
+        - "Cfunc" (str): type of damage function ("linear", "exponential", "concave", or "polynomial")
+        - "D0" (float): base damage cost
+        - "phi_lin" (float): linear cost parameter
+        - "phi_exp" (float): exponential cost parameter
+        - "phi_conc" (float): concave cost parameter
+        - "phi_poly" (float): polynomial cost exponent
+        - "kappa" (float): decay parameter for damage as function of beach width
+        - "W" (float): cost term to add if relocation hasn't happened yet
+        - "minInterval" (float or int): minimum interval constraint for nourishment feasibility
+        - "relocationDelay" (float or int): time at which relocation happens
+        - "x_nourished" (float): desired post-nourishment beach width 
+      and any other relevant keys.
+    :type pars: Dict[str, Any]
+
+    :param x: 1D numpy array of shape (n,) representing the pre-computed beach widths.
+    :type x: np.ndarray
+
+    :param V: 1D numpy array of shape (n,) representing the pre-computed property valuations.
+    :type V: np.ndarray
+
+    :param L: 1D numpy array of shape (n,) representing the pre-computed sea-level rise values.
+    :type L: np.ndarray
+
+    :param E: 1D numpy array of shape (n,) representing the pre-computed erosion values (not used in this function directly, 
+              but included if needed for consistency/future use).
+    :type E: np.ndarray
+
+    :return: A tuple containing:
+             - C (np.ndarray): total cost across all items (nourish, relocate, damage) plus feasibility cost
+             - nourishCost (np.ndarray): nourishment cost
+             - relocateCost (np.ndarray): relocation cost
+             - damageCost (np.ndarray): damage cost
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    """
+
+    # Unpack columns of X
+    tau = X[:, 0]
+    t = X[:, 1]
+    R = X[:, 2]
+    nourishing = X[:, 3]  # Not used directly in this function
+    A = X[:, 4]           # Binary action indicator
+
+    # Precompute the cost factor c2 at current time t
+    c2 = pars["c2"] * (1 + pars["xi"]) ** t
+
+    # === 1) Nourishment Cost ===
+    # Costs if 'A == 1' (i.e., a nourishment decision is made)
+    # x_nourished - x gives the additional width to be nourished 
+    # Multiplying that by c2 yields the "width-based" cost 
+    nourishCost = (
+        pars["c1"] * np.ones_like(x)
+        + c2 * (pars["x_nourished"] * np.ones_like(x) - x)
+        + pars["constructionCosts"] * np.ones_like(x)
+    ) * (A == 1)
+
+    # === 2) Relocation Cost ===
+    # Occurs if 'R == pars["relocationDelay"]'
+    # R is the time at which relocation is triggered
+    relocateCost = pars["rho"] * V * (R == pars["relocationDelay"])
+
+    # === 3) Damage Cost ===
+    # Depends on the specified damage function
+    # If no valid function is specified, raise an error.
+    if pars["Cfunc"] == 'linear':
+        damageCost = (
+            pars["D0"] * (1 + L * pars["phi_lin"])
+            / (pars["kappa"] ** x)
+        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
+
+    elif pars["Cfunc"] == 'exponential':
+        damageCost = (
+            pars["D0"] * (pars["phi_exp"] ** L)
+            / (pars["kappa"] ** x)
+        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
+
+    elif pars["Cfunc"] == 'concave':
+        damageCost = (
+            pars["D0"] * (1 + pars["phi_conc"] * (1 - np.exp(-L)))
+            / (pars["kappa"] ** x)
+        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
+
+    elif pars["Cfunc"] == 'polynomial':
+        damageCost = (
+            pars["D0"] * (1 + L) ** pars["phi_poly"]
+            / (pars["kappa"] ** x)
+        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
+
+    else:
+        raise ValueError("Unrecognized damage function. Must be one of "
+                         "['linear', 'exponential', 'concave', 'polynomial'].")
+
+    # === 4) Feasibility Cost (penalizing infeasible nourishment timing) ===
+    # If 'A == 1' and 'tau < (pars["minInterval"] - 1)', cost is infinite.
+    infeasible = (A == 1) & (tau < (pars["minInterval"] - 1))
+    feasibilityCost = np.zeros_like(infeasible, dtype=float)
+    feasibilityCost[infeasible] = np.inf
+
+    # === 5) Total Cost ===
+    C = nourishCost + relocateCost + damageCost + feasibilityCost
+
+    return C, nourishCost, relocateCost, damageCost
