@@ -4,6 +4,7 @@ from typing import Dict, Any, Tuple, List, Optional
 from scipy.stats import poisson
 import matplotlib.pyplot as plt
 from itertools import product
+from scipy.sparse import lil_matrix, csr_matrix
 import quantecon as qe
 
 def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
@@ -551,3 +552,79 @@ def transition_observed_state(
     new_state[1] = min(new_state[1], pars["sim_length"])
 
     return new_state
+
+
+def build_sparse_transition_matrix(
+    S: List[Tuple[int, ...]],
+    A: List[int],
+    X: np.ndarray,
+    pars: Dict[str, Any]
+) -> Tuple[csr_matrix, List[int], List[int]]:
+    """
+    Constructs a sparse transition matrix Q for a coastal model or MDP-like system, 
+    where each row corresponds to a (state, action) pair and each column corresponds 
+    to a resulting state.
+
+    :param S: A list of all possible states in the system. Each state is typically 
+              a tuple, e.g. (tau, t, relocation_status, nourishment_indicator).
+    :type S: List[Tuple[int, ...]]
+
+    :param A: A list of possible actions (e.g., [0, 1, 2] for do nothing, nourish, relocate).
+    :type A: List[int]
+
+    :param X: A 2D NumPy array where each row combines state and action into a single 
+              vector. For example, if each state is four-dimensional and there's a 
+              single action appended, each row might be length 5.
+    :type X: np.ndarray
+
+    :param pars: A dictionary of parameters for the model. Must include necessary 
+                 keys for the function compute_new_state to work, e.g. "sim_length".
+    :type pars: Dict[str, Any]
+
+    :return: 
+        - Q (csr_matrix): A sparse boolean matrix of shape (len(S)*len(A), len(S)), 
+          where entry (i, j) = True indicates that from row i's (state, action) pair, 
+          the system transitions to state j.
+        - s_indices (List[int]): The index of the state in S for each row i of Q.
+        - a_indices (List[int]): The index of the action in A for each row i of Q.
+
+    :rtype: Tuple[csr_matrix, List[int], List[int]]
+    """
+    # We use LIL format for efficient assignment, then convert to CSR for faster operations.
+    Q = lil_matrix((len(S) * len(A), len(S)), dtype=bool)
+
+    s_indices = []
+    a_indices = []
+
+    for s in S:
+        for a in A:
+            s_index = S.index(s)
+            a_index = A.index(a)
+            s_indices.append(s_index)
+            a_indices.append(a_index)
+
+            # Construct the combined state-action row
+            x_a_combo = list(s) + [a]
+            
+            # Find the corresponding row in X
+            # np.all(..., axis=1) returns a boolean array which we use to locate the index
+            x_index_arr = np.where(np.all(X == x_a_combo, axis=1))[0]
+            if x_index_arr.size == 0:
+                raise ValueError(f"State-action combination {x_a_combo} not found in X.")
+            x_index = x_index_arr[0]
+
+            # Compute the next state given the old state s and action a
+            s_prime = tuple(compute_new_state(s, a, pars))
+
+            # Find index of the new state in S
+            if s_prime not in S:
+                raise ValueError(f"Resulting state {s_prime} not found in the list of states S.")
+            s_prime_index = S.index(s_prime)
+
+            # Mark the transition
+            Q[x_index, s_prime_index] = True
+
+    # Convert to CSR for more efficient row operations
+    Q = Q.tocsr()
+
+    return Q, s_indices, a_indices
