@@ -20,9 +20,12 @@ pars["delta"] = 0.035 # Discount rate of 3.5%
 optS_usace, x_final_usace, v_final_usace, L_final_usace, C_final_usace, B_final_usace, accumulated_npv_usace, strategy_usace = solve_army_corps_bcr_max(pars, initial_state)
 usace_strategy = optS_usace[:,4]
 # Construct the paths: move one folder up, then into 'results_data'
+# Two lines to ensure the 'results_data' directory one level up exists:
+folder_path = os.path.join('..', 'results_data')
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
 npv_file_path = os.path.join('..', 'results_data', 'npv_maximizing_strategy.json')
 usace_file_path = os.path.join('..', 'results_data', 'usace_strategy.json')
-
 # Save each list as a JSON file
 with open(npv_file_path, 'w') as f:
     json.dump(npv_maximizing_strategy, f, indent=4)
