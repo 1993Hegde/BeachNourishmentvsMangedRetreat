@@ -902,8 +902,8 @@ def solve_cutler_et_al_ddp(
     #    Here xVLE and compute_cost/compute_benefits can handle either list or array,
     #    as long as shapes match the function definitions.
     x_vals, v_vals, L_vals, E_vals = compute_coastal_state_variables(X_pr, pars)
-    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X, pars)
-    B_vals = compute_coastal_benefits(X, pars)
+    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X, pars,x_vals, v_vals, L_vals, E_vals)
+    B_vals = compute_coastal_benefits(X, pars,x_vals, v_vals, L_vals, E_vals)
 
     # Convert X back to NumPy array for consistent indexing in the solver
     X_np = np.array(X)
@@ -1009,19 +1009,19 @@ def solve_army_corps_bcr_max(
     X_pr = np.array(X_list, dtype=float)
 
     # 3) Build the transition matrix (sparse) for your MDP
-    Q_sparse, s_indices, a_indices = compute_transition_matrix_sparse(S_list, A, X_pr, pars)
+    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(S_list, A, X_pr, pars)
 
     # 4) Compute relevant coastal metrics for each (state, action) in X
-    x_array, v_array, L_array, E_array = xVLE(X_pr, pars)
-    C_array, nourish_cost, relocate_cost, damage_cost = compute_cost(X_list, pars)
-    B_array = compute_benefits(X_list, pars)
+    x_array, v_array, L_array, E_array = compute_coastal_state_variables(X_pr, pars)
+    C_array, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X_list, pars, x_array, v_array, L_array, E_array)
+    B_array = compute_coastal_benefits(X_list, pars, x_array, v_array, L_array, E_array)
 
     # Convert X_list to a numpy array for consistent indexing
     X_np = np.array(X_list, dtype=float)
 
     # 5) Define the reward R as the benefit-to-cost ratio for each row
     #    (Handle division by zero by assigning 0 if C[i] = 0)
-    R = np.array([B_array[i] / C_array[i] if C_array[i] != 0 else 0.0 
+    R = np.array([B_array[i] / C_array[i] if C_array[i] != 0 else 0 
                   for i in range(len(B_array))])
 
     # 6) Find the index of the initial state in S_list
