@@ -929,3 +929,132 @@ def solve_cutler_et_al_ddp(
     )
 
     return optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy
+
+def solve_army_corps_bcr_max(
+    pars: Dict[str, Any],
+    initial_state: Tuple[int, int, int, int]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Solves a Discrete Dynamic Programming (DDP) problem designed to maximize 
+    the benefit-to-cost (B/C) ratio for coastal nourishment, following a 
+    simplified Army Corps of Engineers (ACOE) approach.
+
+    Steps:
+      1. Define the discrete state space:
+         - tau:       time since last nourishment
+         - time:      current time index
+         - relocation status: {0, 1, 2}
+         - nourished indicator: {0, 1}
+
+      2. Define the action space A = {0, 1}, e.g. {do nothing, nourish}.
+
+      3. Construct all (state, action) pairs (X) and the base state set (S).
+
+      4. Build a sparse transition matrix (Q_sparse) using 
+         compute_transition_matrix_sparse(...).
+
+      5. Compute beach width (x), property valuation (v), sea-level rise (L), 
+         erosion (E), total costs (C), and total benefits (B) for each row in X.
+
+      6. Define the reward array R as the benefit-to-cost ratio: R[i] = B[i] / C[i].
+         (In cases of zero cost, set the ratio to 0 to avoid division by zero.)
+
+      7. Solve the DDP with solve_DDP_return_NPV_action_sequence(...) 
+         to obtain the optimal policy and simulation results.
+
+      8. Return the resulting state-action path, beach width, valuations, 
+         sea-level rise, cost, benefit, net present value, and final strategy.
+
+    :param pars: Dictionary containing model parameters. Must include:
+                 - "sim_length" (int): the total number of time steps
+                 - "deltaT" (int): the time increment used to build state space
+                 - "delta" (float): the discount rate
+                 Additional parameters may be required by xVLE, compute_cost, 
+                 and compute_benefits.
+    :type pars: Dict[str, Any]
+
+    :param initial_state: A tuple specifying the initial state 
+                         (tau, time, relocation_status, nourished_indicator).
+    :type initial_state: Tuple[int, int, int, int]
+
+    :return: A tuple containing:
+             1. optS (np.ndarray): The (state, action) pairs chosen over 
+                the simulation horizon.
+             2. x_final (np.ndarray): Beach width at each time step.
+             3. v_final (np.ndarray): Property valuations at each time step.
+             4. L_final (np.ndarray): Sea-level rise at each time step.
+             5. C_final (np.ndarray): Total cost at each time step.
+             6. B_final (np.ndarray): Total benefit at each time step.
+             7. accumulated_npv (float): Accumulated net present value 
+                over the simulation horizon. (Even though you're using B/C as 
+                the “reward” internally, the solver routine still applies the 
+                discount rate and provides an NPV measure at the end.)
+             8. strategy (np.ndarray): The chosen action at each time step.
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+                  np.ndarray, float, np.ndarray]
+    """
+
+    # 1) Define the action space and discrete state spaces
+    A = [0, 1]  # e.g. 0 = do nothing, 1 = nourish
+    tau_vals = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+    time_vals = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+    relocation_vals = [0, 1, 2]
+    nourished_vals = [0, 1]
+
+    # 2) Build the (state, action) list and the base state list
+    X_list = list(product(tau_vals, time_vals, relocation_vals, nourished_vals, A))
+    S_list = list(product(tau_vals, time_vals, relocation_vals, nourished_vals))
+
+    # Convert to numpy arrays for downstream operations
+    X_pr = np.array(X_list, dtype=float)
+
+    # 3) Build the transition matrix (sparse) for your MDP
+    Q_sparse, s_indices, a_indices = compute_transition_matrix_sparse(S_list, A, X_pr, pars)
+
+    # 4) Compute relevant coastal metrics for each (state, action) in X
+    x_array, v_array, L_array, E_array = xVLE(X_pr, pars)
+    C_array, nourish_cost, relocate_cost, damage_cost = compute_cost(X_list, pars)
+    B_array = compute_benefits(X_list, pars)
+
+    # Convert X_list to a numpy array for consistent indexing
+    X_np = np.array(X_list, dtype=float)
+
+    # 5) Define the reward R as the benefit-to-cost ratio for each row
+    #    (Handle division by zero by assigning 0 if C[i] = 0)
+    R = np.array([B_array[i] / C_array[i] if C_array[i] != 0 else 0.0 
+                  for i in range(len(B_array))])
+
+    # 6) Find the index of the initial state in S_list
+    S0i = S_list.index(tuple(initial_state))
+
+    # 7) Solve via your DDP function, obtaining the full solution and simulation results
+    (
+        optS,
+        x_final,
+        v_final,
+        L_final,
+        C_final,
+        B_final,
+        accumulated_npv, 
+        strategy
+    ) = solve_DDP_return_NPV_action_sequence(
+        R, 
+        Q_sparse, 
+        pars, 
+        S_list, 
+        X_np, 
+        S0i, 
+        s_indices, 
+        a_indices
+    )
+
+    return (
+        optS, 
+        x_final, 
+        v_final, 
+        L_final, 
+        C_final, 
+        B_final, 
+        accumulated_npv, 
+        strategy
+    )
