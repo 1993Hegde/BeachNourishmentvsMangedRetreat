@@ -614,7 +614,7 @@ def build_sparse_transition_matrix(
             x_index = x_index_arr[0]
 
             # Compute the next state given the old state s and action a
-            s_prime = tuple(compute_new_state(s, a, pars))
+            s_prime = tuple(transition_observed_state(s, a, pars))
 
             # Find index of the new state in S
             if s_prime not in S:
