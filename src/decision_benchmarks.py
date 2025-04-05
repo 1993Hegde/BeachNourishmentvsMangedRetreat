@@ -23,6 +23,7 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     :return: A dictionary containing the initialized model parameters.
     :rtype: dict
     '''
+    print("Generating baseline model instance with SLR scenario:", slr_scenario)
     if slr_scenario not in [0, 1, 2, -1]:
         raise ValueError(
             "slr_scenario must be one of the following values: 0 (low), "
@@ -157,6 +158,7 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     pars["WMin"] = 2 * 10**5
     pars["TMin"] = 10
     pars["Tmax"] = 10000
+    print("Baseline model instance generated with parameters")
     return pars
 
 def compute_coastal_state_variables(
@@ -794,7 +796,9 @@ def solve_DDP_return_NPV_action_sequence(
     # 1) Build and solve the DDP using quantecon
     beta = 1 / (1 + pars["delta"])
     ddp = qe.markov.DiscreteDP(R, Q_sparse, beta, s_indices, a_indices)
+    print("Solving Discrete Dynamic Program...")
     results = ddp.solve(method='value_iteration')
+    print("Discrete Dynamic Program solved...")
 
     # 2) Construct the optimal (state, action) array from the policy
     S_array = np.array(S)
@@ -811,7 +815,7 @@ def solve_DDP_return_NPV_action_sequence(
     Ix = results.Ixopt
 
     # 4) Simulate from the initial state using the computed policy
-    Xi, Si = mdpsim_inf(S0i, S, Ix, X, pars)
+    Xi, Si = simulate_mdp_trajectory(S0i, S, Ix, X, pars)
     optS = X[Xi]  # Full (state, action) pairs over time
 
     # 5) Compute relevant coastal model metrics
@@ -820,11 +824,15 @@ def solve_DDP_return_NPV_action_sequence(
     B_final = compute_coastal_benefits(optS, pars,x_final, v_final, L_final, E_final)
 
     # 6) Discount future costs/benefits and compute net present value
-    df = [(1 + pars["delta"]) ** i for i in range(pars["sim_length"])]
-    individual_benefits = [B_final[i] / df[i] for i in range(pars["sim_length"])]
-    individual_costs = [C_final[i] / df[i] for i in range(pars["sim_length"])]
-    individual_npv = [(B_final[i] - C_final[i]) / df[i] for i in range(pars["sim_length"])]
-
+    # df = [(1 + pars["delta"]) ** i for i in range(pars["sim_length"])]
+    # individual_benefits = [B_final[i] / df[i] for i in range(pars["sim_length"])]
+    # individual_costs = [C_final[i] / df[i] for i in range(pars["sim_length"])]
+    # individual_npv = [(B_final[i] - C_final[i]) / df[i] for i in range(pars["sim_length"])]
+    df = np.array([(1 + pars["delta"]) ** i for i in range(pars["sim_length"])])
+    # Vectorized calculations
+    individual_benefits = B_final / df
+    individual_costs = C_final / df
+    individual_npv = (B_final - C_final) / df
     # 7) Get the final accumulated NPV and action strategy
     accumulated_npv = np.cumsum(individual_npv)[-1]
     strategy = optS[:, -1]
@@ -896,21 +904,22 @@ def solve_cutler_et_al_ddp(
     X_pr = np.array(X)
 
     # 5. Build the sparse transition matrix
+    print("Building sparse transition matrix...")
     Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(S, A, X_pr, pars)
-
+    print("Sparse transition matrix built.")
     # 6. Compute the coastal metrics for each (state, action) in X
     #    Here xVLE and compute_cost/compute_benefits can handle either list or array,
     #    as long as shapes match the function definitions.
     x_vals, v_vals, L_vals, E_vals = compute_coastal_state_variables(X_pr, pars)
-    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X, pars,x_vals, v_vals, L_vals, E_vals)
-    B_vals = compute_coastal_benefits(X, pars,x_vals, v_vals, L_vals, E_vals)
+    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X_pr, pars,x_vals, v_vals, L_vals, E_vals)
+    B_vals = compute_coastal_benefits(X_pr, pars,x_vals, v_vals, L_vals, E_vals)
 
     # Convert X back to NumPy array for consistent indexing in the solver
-    X_np = np.array(X)
+    # X_np = np.array(X)
 
     # 7. Build the immediate reward array R = B - C
-    R = np.array([B_vals[i] - C_vals[i] for i in range(len(B_vals))])
-
+    # R = np.array([B_vals[i] - C_vals[i] for i in range(len(B_vals))])
+    R = B_vals - C_vals  # Benefit minus cost for each (state, action) pair
     # 8. Locate the initial state's index in S
     S0i = S.index(tuple(initial_state))
 
@@ -925,7 +934,7 @@ def solve_cutler_et_al_ddp(
         accumulated_npv, 
         strategy
     ) = solve_DDP_return_NPV_action_sequence(
-        R, Q_sparse, pars, S, X_np, S0i, s_indices, a_indices
+        R, Q_sparse, pars, S, X_pr, S0i, s_indices, a_indices
     )
 
     return optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy
