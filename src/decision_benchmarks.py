@@ -7,12 +7,13 @@ from itertools import product
 from scipy.sparse import lil_matrix, csr_matrix
 import quantecon as qe
 
+
 def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
-    '''
-    This function initializes and returns a dictionary of input parameters 
+    """
+    This function initializes and returns a dictionary of input parameters
     for the sea level rise (SLR) model based on the specified SLR scenario.
 
-    :param slr_scenario: An integer representing the sea level rise scenario. 
+    :param slr_scenario: An integer representing the sea level rise scenario.
                          Must be one of the following values:
                          - 0: Low sea level rise
                          - 1: Medium sea level rise
@@ -22,14 +23,14 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     :raises ValueError: If the slr_scenario is not one of the allowed values.
     :return: A dictionary containing the initialized model parameters.
     :rtype: dict
-    '''
+    """
     print("Generating baseline model instance with SLR scenario:", slr_scenario)
     if slr_scenario not in [0, 1, 2, -1]:
         raise ValueError(
             "slr_scenario must be one of the following values: 0 (low), "
             "1 (medium), 2 (high), or -1 (default)."
         )
-    
+
     pars = {}
     pars["scenario"] = slr_scenario
     pars["a"] = 2.355 * 10**-3  # Historical sea level change (m/yr)
@@ -46,29 +47,27 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     # ...existing code for initializing other parameters...
     pars["x_nourished"] = 6.096  # Nourished beach width (m)
     pars["x_crit"] = 0  # Beach width nourishment trigger (m)
-    pars["mu"] = 1  # (x_nourished-x_crit)/x_nourished; nourished portion of beach 
+    pars["mu"] = 1  # (x_nourished-x_crit)/x_nourished; nourished portion of beach
     pars["init_rate"] = -0.0792  # Historical shoreline change rate (m/yr)
     pars["theta"] = 0.1  # Exponential erosion rate
     pars["r"] = 70.04  # Slope of active profile
     pars["H"] = pars["init_rate"] + pars["r"] * pars["a"]
-    '''Initial conditions'''
+    """Initial conditions"""
     pars["tau_init"] = 0  # Initial years since nourishment
     pars["v_init"] = 6690000  # Initial value at risk
     pars["x_init"] = pars["x_nourished"]  # Initial beach width (m)
-    '''Time parameters'''
+    """Time parameters"""
     pars["deltaT"] = 1  # Time step (yr)
     pars["Ti"] = 2020  # Year of simulation start
     pars["sim_length"] = 100  # Simulation Length (yr)
     pars["Tswitch"] = 1  # Time when relocation becomes an option
     pars["T"] = np.inf  # Time horizon
-    '''Expected storm induced erosion'''
+    """Expected storm induced erosion"""
     pars["lambda"] = 0.35  # Storm Frequency
     pars["m"] = 1.68  # GEV location parameter
     pars["sigma"] = 4.24  # GEV scale parameter
     pars["k"] = 0.277  # GEV shape parameter
-    meanGEV = pars["m"] + pars["sigma"] * (
-        (math.gamma(1 - pars["k"]) - 1) / pars["k"]
-    )
+    meanGEV = pars["m"] + pars["sigma"] * ((math.gamma(1 - pars["k"]) - 1) / pars["k"])
     p = poisson.pmf(np.arange(1, 5), mu=pars["lambda"])
     pars["E"] = 0
     for n in np.arange(1, 5):
@@ -77,27 +76,27 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
             M = M + meanGEV / i
         pars["E"] += 0.1 * p[n - 1] * M  # Annual expected storm erosion
     pars["epsilon"] = 0  # Increase in storm erosion with SLR
-    '''Property value parameters'''
+    """Property value parameters"""
     pars["d"] = 0
-    pars["alpha"] = (1 + 0.01)**3.2808  # Property value increase due to 1m 
-                                        # increase in beach width
+    pars["alpha"] = (1 + 0.01) ** 3.2808  # Property value increase due to 1m
+    # increase in beach width
     pars["beta"] = 0.5  # Property value decrease due to 1m increase in sea level
     pars["A"] = 669000
-    pars["v_init"] = pars["A"] * (pars["alpha"]**(pars["x_init"]))  # Baseline 
-                                                                    # property value
+    pars["v_init"] = pars["A"] * (pars["alpha"] ** (pars["x_init"]))  # Baseline
+    # property value
     pars["W"] = 5 * 10**5  # Non-structural value at risk
-    '''Benefit and cost parameters'''
+    """Benefit and cost parameters"""
     pars["delta"] = 0.0265
-    pars["eta"] = 824  # Land value ($1000/m), assumes $14/sq ft and 5470 m 
-                       # of beach length
+    pars["eta"] = 824  # Land value ($1000/m), assumes $14/sq ft and 5470 m
+    # of beach length
     pars["l"] = 0.22  # St. Lucie County general fund tax rate
-    pars["c1"] = 12000  # Fixed cost of nourishment ($1000), assumes $14 
-                        # million per nourishment, c2=350
-    pars["c2"] = 350  # Variable cost of nourishment ($1000/m), assumes 
-                      # $9.55/m^3, 5470 m of beach length, and 224,000 m^3 
-                      # per 6.096 m nourishment
-    pars["xi"] = 0  # Exponential increase in c2 as time progresses (0 means 
-                    # cost is autonomous)
+    pars["c1"] = 12000  # Fixed cost of nourishment ($1000), assumes $14
+    # million per nourishment, c2=350
+    pars["c2"] = 350  # Variable cost of nourishment ($1000/m), assumes
+    # $9.55/m^3, 5470 m of beach length, and 224,000 m^3
+    # per 6.096 m nourishment
+    pars["xi"] = 0  # Exponential increase in c2 as time progresses (0 means
+    # cost is autonomous)
     pars["constructionCosts"] = 0
     pars["Cfunc"] = "concave"
     pars["phi_exp"] = 5.6999  # Sea level base for proportion damaged
@@ -105,16 +104,16 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     pars["phi_conc"] = 193.8357
     pars["phi_poly"] = 3.7625
     pars["kappa"] = 1.2  # Beach width base for proportion damaged
-    pars["D0"] = 5.4 * 10**-3  # Expected proportion damaged when width = 0 
-                               # sea level = 0
-    '''Relocation parameters'''
-    pars["relocationDelay"] = 1  # Years after decision is made that 
-                                 # relocation occurs
+    pars["D0"] = 5.4 * 10**-3  # Expected proportion damaged when width = 0
+    # sea level = 0
+    """Relocation parameters"""
+    pars["relocationDelay"] = 1  # Years after decision is made that
+    # relocation occurs
     pars["rho"] = 1  # Proportion of property value spent to relocate
-    '''Feasibility constraints'''
-    pars["minInterval"] = 2  # Minimum amount of time between two 
-                             # renourishments
-    '''Max and min values for uncertainty and sensitivity analysis as reported in Cutler et al'''
+    """Feasibility constraints"""
+    pars["minInterval"] = 2  # Minimum amount of time between two
+    # renourishments
+    """Max and min values for uncertainty and sensitivity analysis as reported in Cutler et al"""
     pars["x_nourishedMin"] = 0.8 * pars["x_nourished"]
     pars["x_nourishedMax"] = 1.2 * pars["x_nourished"]
     pars["Hmin"] = -0.2
@@ -161,13 +160,12 @@ def baseline_model_instance_with_default_parameters(slr_scenario: int) -> dict:
     print("Baseline model instance generated with parameters")
     return pars
 
+
 def compute_coastal_state_variables(
-    X: np.ndarray,
-    pars: Dict[str, Any],
-    E: Optional[np.ndarray] = None
+    X: np.ndarray, pars: Dict[str, Any], E: Optional[np.ndarray] = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    This function calculates the beach width, property valuation, sea-level rise, 
+    This function calculates the beach width, property valuation, sea-level rise,
     and storm-induced erosion across different states in the model.
 
     :param X: A 2D numpy array of shape (n, 4) representing the state-action matrix.
@@ -196,8 +194,8 @@ def compute_coastal_state_variables(
         - 'beta' (float)
     :type pars: Dict[str, Any]
 
-    :param E: (Optional) A 1D numpy array or None, representing storm-induced 
-              erosion values. If not provided, it will be computed within the 
+    :param E: (Optional) A 1D numpy array or None, representing storm-induced
+              erosion values. If not provided, it will be computed within the
               function.
     :type E: Optional[np.ndarray]
 
@@ -205,7 +203,7 @@ def compute_coastal_state_variables(
              - x: 1D numpy array of computed beach width values.
              - V: 1D numpy array of computed property valuation values.
              - L: 1D numpy array of computed sea-level rise values.
-             - E: 1D numpy array of storm-induced erosion values (either 
+             - E: 1D numpy array of storm-induced erosion values (either
                   provided or computed).
     :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
     """
@@ -226,9 +224,7 @@ def compute_coastal_state_variables(
     # Compute sea-level rise (L) and its integral (L_int)
     L = pars["a"] * t + pars["b"] * (t**2 + 2 * t * (pars["Ti"] - 1992))
     L = np.around(L, 4)
-    L_int = 0.5 * pars["a"] * t**2 + pars["b"] * (
-        t**3 / 3 + t**2 * (pars["Ti"] - 1992)
-    )
+    L_int = 0.5 * pars["a"] * t**2 + pars["b"] * (t**3 / 3 + t**2 * (pars["Ti"] - 1992))
     L_int = np.round(L_int, 4)
 
     # Compute storm-induced erosion (E) if not provided
@@ -247,8 +243,7 @@ def compute_coastal_state_variables(
     diff_tau_t = tau != t
 
     gamma_erosion[condition & same_tau_t] = (
-        pars["r"] * L_t[condition & same_tau_t]
-        - pars["H"] * t[condition & same_tau_t]
+        pars["r"] * L_t[condition & same_tau_t] - pars["H"] * t[condition & same_tau_t]
     )
     gamma_erosion[condition & diff_tau_t] = (
         pars["r"] * (L_t[condition & diff_tau_t] - L_tau[condition & diff_tau_t])
@@ -284,12 +279,12 @@ def compute_coastal_cost_metrics(
     x: np.ndarray,
     V: np.ndarray,
     L: np.ndarray,
-    E: np.ndarray
+    E: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     This function calculates various cost metrics (nourishment cost, relocation cost,
     damage cost) and their total sum for a coastal model. It uses pre-computed
-    beach width (`x`), property valuation (`V`), sea-level rise (`L`), and 
+    beach width (`x`), property valuation (`V`), sea-level rise (`L`), and
     erosion (`E`).
 
     :param X: A 2D numpy array of shape (n, 5) representing the state-action matrix:
@@ -305,7 +300,7 @@ def compute_coastal_cost_metrics(
     :param pars: A dictionary containing model parameters with keys such as:
         - "c1" (float): fixed cost of nourishment
         - "c2" (float): additional cost factor for nourishment
-        - "xi" (float): cost escalation rate 
+        - "xi" (float): cost escalation rate
         - "constructionCosts" (float): construction costs for nourishment
         - "rho" (float): fraction of valuation lost upon relocation
         - "Cfunc" (str): type of damage function ("linear", "exponential", "concave", or "polynomial")
@@ -318,7 +313,7 @@ def compute_coastal_cost_metrics(
         - "W" (float): cost term to add if relocation hasn't happened yet
         - "minInterval" (float or int): minimum interval constraint for nourishment feasibility
         - "relocationDelay" (float or int): time at which relocation happens
-        - "x_nourished" (float): desired post-nourishment beach width 
+        - "x_nourished" (float): desired post-nourishment beach width
       and any other relevant keys.
     :type pars: Dict[str, Any]
 
@@ -331,7 +326,7 @@ def compute_coastal_cost_metrics(
     :param L: 1D numpy array of shape (n,) representing the pre-computed sea-level rise values.
     :type L: np.ndarray
 
-    :param E: 1D numpy array of shape (n,) representing the pre-computed erosion values (not used in this function directly, 
+    :param E: 1D numpy array of shape (n,) representing the pre-computed erosion values (not used in this function directly,
               but included if needed for consistency/future use).
     :type E: np.ndarray
 
@@ -348,15 +343,15 @@ def compute_coastal_cost_metrics(
     t = X[:, 1]
     R = X[:, 2]
     nourishing = X[:, 3]  # Not used directly in this function
-    A = X[:, 4]           # Binary action indicator
+    A = X[:, 4]  # Binary action indicator
 
     # Precompute the cost factor c2 at current time t
     c2 = pars["c2"] * (1 + pars["xi"]) ** t
 
     # === 1) Nourishment Cost ===
     # Costs if 'A == 1' (i.e., a nourishment decision is made)
-    # x_nourished - x gives the additional width to be nourished 
-    # Multiplying that by c2 yields the "width-based" cost 
+    # x_nourished - x gives the additional width to be nourished
+    # Multiplying that by c2 yields the "width-based" cost
     nourishCost = (
         pars["c1"] * np.ones_like(x)
         + c2 * (pars["x_nourished"] * np.ones_like(x) - x)
@@ -371,33 +366,33 @@ def compute_coastal_cost_metrics(
     # === 3) Damage Cost ===
     # Depends on the specified damage function
     # If no valid function is specified, raise an error.
-    if pars["Cfunc"] == 'linear':
+    if pars["Cfunc"] == "linear":
+        damageCost = (pars["D0"] * (1 + L * pars["phi_lin"]) / (pars["kappa"] ** x)) * (
+            V + pars["W"] * (R < pars["relocationDelay"])
+        )
+
+    elif pars["Cfunc"] == "exponential":
+        damageCost = (pars["D0"] * (pars["phi_exp"] ** L) / (pars["kappa"] ** x)) * (
+            V + pars["W"] * (R < pars["relocationDelay"])
+        )
+
+    elif pars["Cfunc"] == "concave":
         damageCost = (
-            pars["D0"] * (1 + L * pars["phi_lin"])
+            pars["D0"]
+            * (1 + pars["phi_conc"] * (1 - np.exp(-L)))
             / (pars["kappa"] ** x)
         ) * (V + pars["W"] * (R < pars["relocationDelay"]))
 
-    elif pars["Cfunc"] == 'exponential':
+    elif pars["Cfunc"] == "polynomial":
         damageCost = (
-            pars["D0"] * (pars["phi_exp"] ** L)
-            / (pars["kappa"] ** x)
-        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
-
-    elif pars["Cfunc"] == 'concave':
-        damageCost = (
-            pars["D0"] * (1 + pars["phi_conc"] * (1 - np.exp(-L)))
-            / (pars["kappa"] ** x)
-        ) * (V + pars["W"] * (R < pars["relocationDelay"]))
-
-    elif pars["Cfunc"] == 'polynomial':
-        damageCost = (
-            pars["D0"] * (1 + L) ** pars["phi_poly"]
-            / (pars["kappa"] ** x)
+            pars["D0"] * (1 + L) ** pars["phi_poly"] / (pars["kappa"] ** x)
         ) * (V + pars["W"] * (R < pars["relocationDelay"]))
 
     else:
-        raise ValueError("Unrecognized damage function. Must be one of "
-                         "['linear', 'exponential', 'concave', 'polynomial'].")
+        raise ValueError(
+            "Unrecognized damage function. Must be one of "
+            "['linear', 'exponential', 'concave', 'polynomial']."
+        )
 
     # === 4) Feasibility Cost (penalizing infeasible nourishment timing) ===
     # If 'A == 1' and 'tau < (pars["minInterval"] - 1)', cost is infinite.
@@ -410,20 +405,21 @@ def compute_coastal_cost_metrics(
 
     return C, nourishCost, relocateCost, damageCost
 
+
 def compute_coastal_benefits(
     X: np.ndarray,
     pars: Dict[str, Any],
     x: np.ndarray,
     V: np.ndarray,
     L: np.ndarray,
-    E: np.ndarray
+    E: np.ndarray,
 ) -> np.ndarray:
     """
-    This function calculates the total benefits (from location and beach 
+    This function calculates the total benefits (from location and beach
     amenities) for a coastal model using precomputed values.
 
     :param X: A 2D numpy array (state-action matrix) of shape (n, k).
-              Although not used directly in this function, it is included 
+              Although not used directly in this function, it is included
               for consistency with the overall model interface.
     :type X: np.ndarray
 
@@ -433,25 +429,25 @@ def compute_coastal_benefits(
       Additional keys may exist for other purposes in the full model.
     :type pars: Dict[str, Any]
 
-    :param x: 1D numpy array of shape (n,) representing the precomputed 
+    :param x: 1D numpy array of shape (n,) representing the precomputed
               beach widths.
     :type x: np.ndarray
 
-    :param V: 1D numpy array of shape (n,) representing the precomputed 
+    :param V: 1D numpy array of shape (n,) representing the precomputed
               property valuations.
     :type V: np.ndarray
 
-    :param L: 1D numpy array of shape (n,) representing the precomputed 
-              sea-level rise values. It is not used in this function but 
+    :param L: 1D numpy array of shape (n,) representing the precomputed
+              sea-level rise values. It is not used in this function but
               is included for consistency.
     :type L: np.ndarray
 
-    :param E: 1D numpy array of shape (n,) representing the precomputed 
-              erosion values. It is not used in this function but is included 
+    :param E: 1D numpy array of shape (n,) representing the precomputed
+              erosion values. It is not used in this function but is included
               for consistency.
     :type E: np.ndarray
 
-    :return: A 1D numpy array of shape (n,) where each element is the total 
+    :return: A 1D numpy array of shape (n,) where each element is the total
              benefit (location benefit plus beach benefit).
     :rtype: np.ndarray
     """
@@ -467,19 +463,18 @@ def compute_coastal_benefits(
 
     return B
 
+
 def transition_observed_state(
-    old_state: List[int],
-    action: int,
-    pars: Dict[str, Any]
+    old_state: List[int], action: int, pars: Dict[str, Any]
 ) -> List[int]:
     """
-    Computes the new state of the coastal system given the old state 
+    Computes the new state of the coastal system given the old state
     and an action.
 
     The state is assumed to be a 4-element list:
         - state[0]: Time (in discrete steps) since the last nourishment (tau).
         - state[1]: Current simulation time step (t).
-        - state[2]: Relocation status (e.g., 0 = not relocating, 1 = planning 
+        - state[2]: Relocation status (e.g., 0 = not relocating, 1 = planning
                     to relocate, 2 = relocated).
         - state[3]: Nourishment indicator (e.g., 0 = not nourishing, 1 = nourishing).
 
@@ -490,7 +485,7 @@ def transition_observed_state(
 
     The function updates elements of the state vector to reflect the
     chosen action, then ensures neither time since last nourishment (state[0])
-    nor the current time step (state[1]) exceed the simulation length defined 
+    nor the current time step (state[1]) exceed the simulation length defined
     in `pars["sim_length"]`.
 
     :param old_state: The current state of the system, a list of four integers.
@@ -500,7 +495,7 @@ def transition_observed_state(
                    0 = do nothing, 1 = nourish, 2 = relocate.
     :type action: int
 
-    :param pars: A dictionary of model parameters, 
+    :param pars: A dictionary of model parameters,
                  which must include at least:
                  - "sim_length" (int): The maximum time step for the simulation.
     :type pars: Dict[str, Any]
@@ -522,20 +517,20 @@ def transition_observed_state(
     # 3) Transition logic based on action
     if action == 0:
         # Action 0: Do nothing
-        new_state[0] = old_state[0] + 1   # Increase time since last nourishment
-        new_state[2] = old_state[2]      # Keep relocation status
-        new_state[3] = 0                 # Not nourishing
+        new_state[0] = old_state[0] + 1  # Increase time since last nourishment
+        new_state[2] = old_state[2]  # Keep relocation status
+        new_state[3] = 0  # Not nourishing
 
     elif action == 1:
         # Action 1: Nourish
-        new_state[0] = 0                 # Reset time since last nourishment
-        new_state[2] = old_state[2]      # Keep relocation status
-        new_state[3] = 1                 # Nourishing
+        new_state[0] = 0  # Reset time since last nourishment
+        new_state[2] = old_state[2]  # Keep relocation status
+        new_state[3] = 1  # Nourishing
 
     elif action == 2:
         # Action 2: Relocate (or plan to relocate)
         new_state[0] = old_state[0] + 1  # Increase time since last nourishment
-        new_state[3] = 0                 # Not nourishing
+        new_state[3] = 0  # Not nourishing
 
         # If currently not relocating (0), switch to planning to relocate (1)
         if old_state[2] == 0:
@@ -557,35 +552,32 @@ def transition_observed_state(
 
 
 def build_sparse_transition_matrix(
-    S: List[Tuple[int, ...]],
-    A: List[int],
-    X: np.ndarray,
-    pars: Dict[str, Any]
+    S: List[Tuple[int, ...]], A: List[int], X: np.ndarray, pars: Dict[str, Any]
 ) -> Tuple[csr_matrix, List[int], List[int]]:
     """
-    Constructs a sparse transition matrix Q for a coastal model or MDP-like system, 
-    where each row corresponds to a (state, action) pair and each column corresponds 
+    Constructs a sparse transition matrix Q for a coastal model or MDP-like system,
+    where each row corresponds to a (state, action) pair and each column corresponds
     to a resulting state.
 
-    :param S: A list of all possible states in the system. Each state is typically 
+    :param S: A list of all possible states in the system. Each state is typically
               a tuple, e.g. (tau, t, relocation_status, nourishment_indicator).
     :type S: List[Tuple[int, ...]]
 
     :param A: A list of possible actions (e.g., [0, 1, 2] for do nothing, nourish, relocate).
     :type A: List[int]
 
-    :param X: A 2D NumPy array where each row combines state and action into a single 
-              vector. For example, if each state is four-dimensional and there's a 
+    :param X: A 2D NumPy array where each row combines state and action into a single
+              vector. For example, if each state is four-dimensional and there's a
               single action appended, each row might be length 5.
     :type X: np.ndarray
 
-    :param pars: A dictionary of parameters for the model. Must include necessary 
+    :param pars: A dictionary of parameters for the model. Must include necessary
                  keys for the function compute_new_state to work, e.g. "sim_length".
     :type pars: Dict[str, Any]
 
-    :return: 
-        - Q (csr_matrix): A sparse boolean matrix of shape (len(S)*len(A), len(S)), 
-          where entry (i, j) = True indicates that from row i's (state, action) pair, 
+    :return:
+        - Q (csr_matrix): A sparse boolean matrix of shape (len(S)*len(A), len(S)),
+          where entry (i, j) = True indicates that from row i's (state, action) pair,
           the system transitions to state j.
         - s_indices (List[int]): The index of the state in S for each row i of Q.
         - a_indices (List[int]): The index of the action in A for each row i of Q.
@@ -607,12 +599,14 @@ def build_sparse_transition_matrix(
 
             # Construct the combined state-action row
             x_a_combo = list(s) + [a]
-            
+
             # Find the corresponding row in X
             # np.all(..., axis=1) returns a boolean array which we use to locate the index
             x_index_arr = np.where(np.all(X == x_a_combo, axis=1))[0]
             if x_index_arr.size == 0:
-                raise ValueError(f"State-action combination {x_a_combo} not found in X.")
+                raise ValueError(
+                    f"State-action combination {x_a_combo} not found in X."
+                )
             x_index = x_index_arr[0]
 
             # Compute the next state given the old state s and action a
@@ -620,7 +614,9 @@ def build_sparse_transition_matrix(
 
             # Find index of the new state in S
             if s_prime not in S:
-                raise ValueError(f"Resulting state {s_prime} not found in the list of states S.")
+                raise ValueError(
+                    f"Resulting state {s_prime} not found in the list of states S."
+                )
             s_prime_index = S.index(s_prime)
 
             # Mark the transition
@@ -637,17 +633,17 @@ def simulate_mdp_trajectory(
     S: List[Tuple[int, ...]],
     Ix: np.ndarray,
     X: np.ndarray,
-    pars: Dict[str, Any]
+    pars: Dict[str, Any],
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Simulates a Markov Decision Process (MDP) trajectory for a specified 
-    number of time steps. The policy is implicitly defined by the array Ix, 
-    which indicates the row in X (a state-action matrix) to use for each 
+    Simulates a Markov Decision Process (MDP) trajectory for a specified
+    number of time steps. The policy is implicitly defined by the array Ix,
+    which indicates the row in X (a state-action matrix) to use for each
     state index.
 
     At each time step t:
       1. The function looks up the current state index (Si[t-1]).
-      2. It retrieves an action from the row X[ Xi[t-1] ] (i.e., the last 
+      2. It retrieves an action from the row X[ Xi[t-1] ] (i.e., the last
          element in that row is assumed to be the action).
       3. It computes the next state using compute_new_state.
       4. It then finds the index of this new state in S.
@@ -656,32 +652,32 @@ def simulate_mdp_trajectory(
     :param initial_state_index: The index of the initial state in S.
     :type initial_state_index: int
 
-    :param S: A list of all possible states in the system. Each element is a 
-              tuple (or list) describing a unique state, e.g. 
+    :param S: A list of all possible states in the system. Each element is a
+              tuple (or list) describing a unique state, e.g.
               (tau, t, relocation_status, nourishment_indicator).
     :type S: List[Tuple[int, ...]]
 
-    :param Ix: A NumPy array (or list) of length len(S), where Ix[i] gives 
-               the row index in X that should be used for state i. 
+    :param Ix: A NumPy array (or list) of length len(S), where Ix[i] gives
+               the row index in X that should be used for state i.
                This effectively encodes a policy: for state i, use X[ Ix[i] ].
     :type Ix: np.ndarray
 
-    :param X: A 2D NumPy array (or matrix) whose rows typically represent 
-              a state-action combination. The last column is assumed to 
-              represent the action. E.g., X[j, :-1] might be a state, and 
+    :param X: A 2D NumPy array (or matrix) whose rows typically represent
+              a state-action combination. The last column is assumed to
+              represent the action. E.g., X[j, :-1] might be a state, and
               X[j, -1] is the action.
     :type X: np.ndarray
 
-    :param pars: A dictionary of parameters for the MDP simulation, which 
+    :param pars: A dictionary of parameters for the MDP simulation, which
                  must include:
                  - "sim_length" (int): The number of time steps to simulate.
                  Other keys may be needed for compute_new_state.
     :type pars: Dict[str, Any]
 
-    :return: 
-        - Xi (np.ndarray): An array of length sim_length containing the indices 
+    :return:
+        - Xi (np.ndarray): An array of length sim_length containing the indices
           into X (the state-action matrix) used at each time step.
-        - Si (np.ndarray): An array of length sim_length containing the indices 
+        - Si (np.ndarray): An array of length sim_length containing the indices
           into S (the list of possible states) for each time step.
     :rtype: Tuple[np.ndarray, np.ndarray]
     """
@@ -707,14 +703,16 @@ def simulate_mdp_trajectory(
         action = X[x_index, -1]
 
         # Convert the current state (a tuple) to a list (if needed) for compute_new_state
-        old_state = list(S[s_current_index][0:-1])  # or simply list(S[s_current_index]) if that's appropriate
-        
+        old_state = list(
+            S[s_current_index][0:-1]
+        )  # or simply list(S[s_current_index]) if that's appropriate
+
         # Compute the next state
         new_state = transition_observed_state(old_state, action, pars)
 
         # Convert next state to a tuple so we can look it up in S
         new_state_tuple = tuple(new_state)
-        
+
         # Find the index of the new state in S
         s_next_index = S.index(new_state_tuple)
         Si[t] = s_next_index
@@ -724,6 +722,7 @@ def simulate_mdp_trajectory(
 
     return Xi, Si
 
+
 def solve_DDP_return_NPV_action_sequence(
     R: np.ndarray,
     Q_sparse: csr_matrix,
@@ -732,64 +731,73 @@ def solve_DDP_return_NPV_action_sequence(
     X: np.ndarray,
     S0i: int,
     s_indices: List[int],
-    a_indices: List[int]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    a_indices: List[int],
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    float,
+    np.ndarray,
+]:
     """
     Solves a Discrete Dynamic Programming (DDP) model (via value iteration),
-    simulates the resulting optimal policy, and returns key metrics including 
+    simulates the resulting optimal policy, and returns key metrics including
     net present value (NPV).
 
-    :param R: A 1D NumPy array of shape (n_state_action,) representing the 
+    :param R: A 1D NumPy array of shape (n_state_action,) representing the
               immediate reward for each (state, action) pair.
     :type R: np.ndarray
 
-    :param Q_sparse: A sparse transition probability matrix (CSR format) of 
-                     shape (n_state_action, n_states). Each row corresponds 
-                     to a (state, action) pair, and each column corresponds 
+    :param Q_sparse: A sparse transition probability matrix (CSR format) of
+                     shape (n_state_action, n_states). Each row corresponds
+                     to a (state, action) pair, and each column corresponds
                      to the next-state index.
     :type Q_sparse: csr_matrix
 
-    :param pars: A dictionary of model parameters required by quantecon and 
+    :param pars: A dictionary of model parameters required by quantecon and
                  downstream functions, which must include:
                  - "delta" (float): discount rate
                  - "sim_length" (int): number of time steps in the simulation
-                 Additional parameters may be needed by xVLE, compute_cost, 
+                 Additional parameters may be needed by xVLE, compute_cost,
                  and compute_benefits.
     :type pars: Dict[str, Any]
 
-    :param S: A list of all possible states in the model. Each state is 
+    :param S: A list of all possible states in the model. Each state is
               typically a tuple (tau, time, relocation_status, nourished_indicator).
     :type S: List[Tuple[int, int, int, int]]
 
-    :param X: A 2D NumPy array where each row corresponds to a (state, action) 
-              combination. For instance, X[i, :-1] might be a state, and 
+    :param X: A 2D NumPy array where each row corresponds to a (state, action)
+              combination. For instance, X[i, :-1] might be a state, and
               X[i, -1] the corresponding action.
     :type X: np.ndarray
 
     :param S0i: The index (in S) of the initial state.
     :type S0i: int
 
-    :param s_indices: A list mapping each row of Q_sparse (and R) to the 
+    :param s_indices: A list mapping each row of Q_sparse (and R) to the
                       appropriate state index in S.
     :type s_indices: List[int]
 
-    :param a_indices: A list mapping each row of Q_sparse (and R) to the 
+    :param a_indices: A list mapping each row of Q_sparse (and R) to the
                       appropriate action index in your action set.
     :type a_indices: List[int]
 
     :return: A tuple containing:
-        1. optS (np.ndarray): The (state, action) pairs chosen over the 
+        1. optS (np.ndarray): The (state, action) pairs chosen over the
            simulation horizon.
         2. x_final (np.ndarray): Beach width at each time step.
         3. v_final (np.ndarray): Property valuation at each time step.
         4. L_final (np.ndarray): Sea-level rise at each time step.
         5. C_final (np.ndarray): Total cost at each time step.
         6. B_final (np.ndarray): Total benefit at each time step.
-        7. accumulated_npv (float): The total accumulated net present value 
+        7. accumulated_npv (float): The total accumulated net present value
            over the simulation horizon.
-        8. strategy (np.ndarray): The action chosen at each time step (last 
+        8. strategy (np.ndarray): The action chosen at each time step (last
            column of optS).
-    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray,
                   np.ndarray, np.ndarray, float, np.ndarray]
     """
 
@@ -797,7 +805,7 @@ def solve_DDP_return_NPV_action_sequence(
     beta = 1 / (1 + pars["delta"])
     ddp = qe.markov.DiscreteDP(R, Q_sparse, beta, s_indices, a_indices)
     print("Solving Discrete Dynamic Program...")
-    results = ddp.solve(method='value_iteration')
+    results = ddp.solve(method="value_iteration")
     print("Discrete Dynamic Program solved...")
 
     # 2) Construct the optimal (state, action) array from the policy
@@ -820,8 +828,10 @@ def solve_DDP_return_NPV_action_sequence(
 
     # 5) Compute relevant coastal model metrics
     x_final, v_final, L_final, E_final = compute_coastal_state_variables(optS, pars)
-    C_final, nourish_cost_final, relocate_cost_final, damage_cost_final = compute_coastal_cost_metrics(optS, pars,x_final, v_final, L_final, E_final)
-    B_final = compute_coastal_benefits(optS, pars,x_final, v_final, L_final, E_final)
+    C_final, nourish_cost_final, relocate_cost_final, damage_cost_final = (
+        compute_coastal_cost_metrics(optS, pars, x_final, v_final, L_final, E_final)
+    )
+    B_final = compute_coastal_benefits(optS, pars, x_final, v_final, L_final, E_final)
 
     # 6) Discount future costs/benefits and compute net present value
     # df = [(1 + pars["delta"]) ** i for i in range(pars["sim_length"])]
@@ -841,11 +851,19 @@ def solve_DDP_return_NPV_action_sequence(
 
 
 def solve_cutler_et_al_ddp(
-    pars: Dict[str, Any], 
-    initial_state: Tuple[int, int, int, int]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    pars: Dict[str, Any], initial_state: Tuple[int, int, int, int]
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    float,
+    np.ndarray,
+]:
     """
-    Sets up and solves the coastal DDP model using the approach described 
+    Sets up and solves the coastal DDP model using the approach described
     by "Cutler et al." (as referenced in your code base). This involves:
       1. Defining the state space (tau, time, relocation, nourished).
       2. Defining the action space (0, 1, 2).
@@ -855,32 +873,32 @@ def solve_cutler_et_al_ddp(
       6. Solving the DDP via `solve_DDP_return_NPV_action_sequence`.
       7. Returning the optimal path and relevant metrics.
 
-    :param pars: A dictionary of parameters needed to define the model. 
+    :param pars: A dictionary of parameters needed to define the model.
                  Must include:
                  - "sim_length" (int)
                  - "deltaT" (int): The increment in tau/time to build the state space
                  - "delta" (float): Discount rate
-                 Additional keys may be needed by other functions 
+                 Additional keys may be needed by other functions
                  (xVLE, compute_cost, compute_benefits).
     :type pars: Dict[str, Any]
 
-    :param initial_state: A tuple defining the initial state in the form 
+    :param initial_state: A tuple defining the initial state in the form
                           (tau, time, relocation, nourished).
     :type initial_state: Tuple[int, int, int, int]
 
     :return: A tuple containing the same outputs as solve_DDP_return_NPV_action_sequence:
-        1. optS (np.ndarray): The (state, action) pairs chosen over the 
+        1. optS (np.ndarray): The (state, action) pairs chosen over the
            simulation horizon.
         2. x_final (np.ndarray): Beach width at each time step.
         3. v_final (np.ndarray): Property valuation at each time step.
         4. L_final (np.ndarray): Sea-level rise at each time step.
         5. C_final (np.ndarray): Total cost at each time step.
         6. B_final (np.ndarray): Total benefit at each time step.
-        7. accumulated_npv (float): The total accumulated net present value 
+        7. accumulated_npv (float): The total accumulated net present value
            over the simulation horizon.
-        8. strategy (np.ndarray): The action chosen at each time step (last 
+        8. strategy (np.ndarray): The action chosen at each time step (last
            column of the resulting path).
-    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray,
                   np.ndarray, np.ndarray, float, np.ndarray]
     """
 
@@ -911,8 +929,10 @@ def solve_cutler_et_al_ddp(
     #    Here xVLE and compute_cost/compute_benefits can handle either list or array,
     #    as long as shapes match the function definitions.
     x_vals, v_vals, L_vals, E_vals = compute_coastal_state_variables(X_pr, pars)
-    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X_pr, pars,x_vals, v_vals, L_vals, E_vals)
-    B_vals = compute_coastal_benefits(X_pr, pars,x_vals, v_vals, L_vals, E_vals)
+    C_vals, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(
+        X_pr, pars, x_vals, v_vals, L_vals, E_vals
+    )
+    B_vals = compute_coastal_benefits(X_pr, pars, x_vals, v_vals, L_vals, E_vals)
 
     # Convert X back to NumPy array for consistent indexing in the solver
     # X_np = np.array(X)
@@ -924,28 +944,30 @@ def solve_cutler_et_al_ddp(
     S0i = S.index(tuple(initial_state))
 
     # 9. Solve and simulate the DDP
-    (
-        optS, 
-        x_final, 
-        v_final, 
-        L_final, 
-        C_final, 
-        B_final, 
-        accumulated_npv, 
-        strategy
-    ) = solve_DDP_return_NPV_action_sequence(
-        R, Q_sparse, pars, S, X_pr, S0i, s_indices, a_indices
+    (optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy) = (
+        solve_DDP_return_NPV_action_sequence(
+            R, Q_sparse, pars, S, X_pr, S0i, s_indices, a_indices
+        )
     )
 
     return optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy
 
+
 def solve_army_corps_bcr_max(
-    pars: Dict[str, Any],
-    initial_state: Tuple[int, int, int, int]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    pars: Dict[str, Any], initial_state: Tuple[int, int, int, int]
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    float,
+    np.ndarray,
+]:
     """
-    Solves a Discrete Dynamic Programming (DDP) problem designed to maximize 
-    the benefit-to-cost (B/C) ratio for coastal nourishment, following a 
+    Solves a Discrete Dynamic Programming (DDP) problem designed to maximize
+    the benefit-to-cost (B/C) ratio for coastal nourishment, following a
     simplified Army Corps of Engineers (ACOE) approach.
 
     Steps:
@@ -959,47 +981,47 @@ def solve_army_corps_bcr_max(
 
       3. Construct all (state, action) pairs (X) and the base state set (S).
 
-      4. Build a sparse transition matrix (Q_sparse) using 
+      4. Build a sparse transition matrix (Q_sparse) using
          compute_transition_matrix_sparse(...).
 
-      5. Compute beach width (x), property valuation (v), sea-level rise (L), 
+      5. Compute beach width (x), property valuation (v), sea-level rise (L),
          erosion (E), total costs (C), and total benefits (B) for each row in X.
 
       6. Define the reward array R as the benefit-to-cost ratio: R[i] = B[i] / C[i].
          (In cases of zero cost, set the ratio to 0 to avoid division by zero.)
 
-      7. Solve the DDP with solve_DDP_return_NPV_action_sequence(...) 
+      7. Solve the DDP with solve_DDP_return_NPV_action_sequence(...)
          to obtain the optimal policy and simulation results.
 
-      8. Return the resulting state-action path, beach width, valuations, 
+      8. Return the resulting state-action path, beach width, valuations,
          sea-level rise, cost, benefit, net present value, and final strategy.
 
     :param pars: Dictionary containing model parameters. Must include:
                  - "sim_length" (int): the total number of time steps
                  - "deltaT" (int): the time increment used to build state space
                  - "delta" (float): the discount rate
-                 Additional parameters may be required by xVLE, compute_cost, 
+                 Additional parameters may be required by xVLE, compute_cost,
                  and compute_benefits.
     :type pars: Dict[str, Any]
 
-    :param initial_state: A tuple specifying the initial state 
+    :param initial_state: A tuple specifying the initial state
                          (tau, time, relocation_status, nourished_indicator).
     :type initial_state: Tuple[int, int, int, int]
 
     :return: A tuple containing:
-             1. optS (np.ndarray): The (state, action) pairs chosen over 
+             1. optS (np.ndarray): The (state, action) pairs chosen over
                 the simulation horizon.
              2. x_final (np.ndarray): Beach width at each time step.
              3. v_final (np.ndarray): Property valuations at each time step.
              4. L_final (np.ndarray): Sea-level rise at each time step.
              5. C_final (np.ndarray): Total cost at each time step.
              6. B_final (np.ndarray): Total benefit at each time step.
-             7. accumulated_npv (float): Accumulated net present value 
-                over the simulation horizon. (Even though you're using B/C as 
-                the “reward” internally, the solver routine still applies the 
+             7. accumulated_npv (float): Accumulated net present value
+                over the simulation horizon. (Even though you're using B/C as
+                the “reward” internally, the solver routine still applies the
                 discount rate and provides an NPV measure at the end.)
              8. strategy (np.ndarray): The chosen action at each time step.
-    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
+    :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
                   np.ndarray, float, np.ndarray]
     """
 
@@ -1018,52 +1040,43 @@ def solve_army_corps_bcr_max(
     X_pr = np.array(X_list, dtype=float)
 
     # 3) Build the transition matrix (sparse) for your MDP
-    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(S_list, A, X_pr, pars)
+    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(
+        S_list, A, X_pr, pars
+    )
 
     # 4) Compute relevant coastal metrics for each (state, action) in X
     x_array, v_array, L_array, E_array = compute_coastal_state_variables(X_pr, pars)
-    C_array, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(X_list, pars, x_array, v_array, L_array, E_array)
+    C_array, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(
+        X_list, pars, x_array, v_array, L_array, E_array
+    )
     B_array = compute_coastal_benefits(X_list, pars, x_array, v_array, L_array, E_array)
 
     # Convert X_list to a numpy array for consistent indexing
-    X_np = np.array(X_list, dtype=float)
+    # X_np = np.array(X_list, dtype=float)
 
     # 5) Define the reward R as the benefit-to-cost ratio for each row
     #    (Handle division by zero by assigning 0 if C[i] = 0)
-    R = np.array([B_array[i] / C_array[i] if C_array[i] != 0 else 0 
-                  for i in range(len(B_array))])
+    R = np.array(
+        [B_array[i] / C_array[i] if C_array[i] != 0 else 0 for i in range(len(B_array))]
+    )
 
     # 6) Find the index of the initial state in S_list
     S0i = S_list.index(tuple(initial_state))
 
     # 7) Solve via your DDP function, obtaining the full solution and simulation results
-    (
+    (optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy) = (
+        solve_DDP_return_NPV_action_sequence(
+            R, Q_sparse, pars, S_list, X_pr, S0i, s_indices, a_indices
+        )
+    )
+
+    return (
         optS,
         x_final,
         v_final,
         L_final,
         C_final,
         B_final,
-        accumulated_npv, 
-        strategy
-    ) = solve_DDP_return_NPV_action_sequence(
-        R, 
-        Q_sparse, 
-        pars, 
-        S_list, 
-        X_np, 
-        S0i, 
-        s_indices, 
-        a_indices
-    )
-
-    return (
-        optS, 
-        x_final, 
-        v_final, 
-        L_final, 
-        C_final, 
-        B_final, 
-        accumulated_npv, 
-        strategy
+        accumulated_npv,
+        strategy,
     )
