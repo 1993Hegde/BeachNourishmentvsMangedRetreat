@@ -1,8 +1,10 @@
 from SALib.sample import latin
 import numpy as np
 from scipy.stats import beta
-from typing import Tuple
+from typing import Tuple, Dict, Any
 import os
+from decision_benchmarks import *
+from moea_components import *
 
 
 def pert_beta_params(
@@ -105,3 +107,159 @@ def generate_beach_nourishment_parameters_lhs_samples(
     np.save(os.path.join(results_dir, "lhs_samples.npy"), lhs_samples)
 
     return lhs_samples
+
+
+def evaluate_pathway_sow(
+    individual: np.ndarray,
+    pars: Dict[str, Any],
+    num_objectives: int,  # New argument for number of objectives
+) -> Tuple[float, float, ...]:  # Adjusted return type for flexibility
+    """
+    Evaluates the outcomes of a given strategy represented by an individual over a series of time periods.
+    The function simulates the evolution of states based on actions taken at each time period,
+    calculates associated costs and benefits, and returns accumulated benefits and costs for the strategy.
+    :param individual: A NumPy array representing the actions taken by the town at each time period.
+    :type individual: np.ndarray
+    :param pars: A dictionary of parameters required for the simulation and calculations,
+                 including "sim_length" and "delta".
+    :type pars: Dict[str, Any]
+    :param num_objectives: Number of objectives for evaluation, should be 2 or 5.
+    :type num_objectives: int
+    :return: A tuple containing the relevant accumulated metrics based on the number of objectives.
+    :rtype: Tuple[float, float, ...]
+    """
+    # Validate number of objectives
+    if num_objectives not in [2, 5]:
+        return "Error: Current model has only been written for 2 and 5 objectives."
+
+    initial_state = (0, 0, 0, 0)
+    states_in_path = [initial_state]
+    old_state = initial_state
+    state_action = []
+    sample_pars = pars
+
+    for time_period in range(sample_pars["sim_length"] - 1):
+        action = individual[time_period]
+        combo = list(old_state) + [action]
+        new_state = transition_observed_state(old_state, action, sample_pars)
+        states_in_path.append(new_state)
+        old_state = new_state
+        state_action.append(combo)
+
+    combo_final = old_state + [individual[-1]]
+    state_action.append(combo_final)
+    strategy_individual = np.array(state_action, dtype=object)
+
+    # Calculate costs and benefits
+    x_sow, V_sow, L_sow, E_sow = compute_coastal_variables(strategy_individual, pars)
+    C_sow, nourish_cost_sow, relocate_cost_sow, damage_cost_sow = (
+        compute_coastal_cost_metrics(
+            strategy_individual, pars, x_sow, V_sow, L_sow, E_sow
+        )
+    )
+    B_sow = compute_coastal_benefits(
+        strategy_individual, pars, x_sow, V_sow, L_sow, E_sow
+    )
+
+    # Compute reliability and discounted values
+    reliability_sow = np.count_nonzero(x_sow) / pars["sim_length"]
+    discount_factor_sow = (1 + pars["delta"]) ** np.arange(pars["sim_length"])
+    individual_benefits_sow = B_sow / discount_factor_sow
+    individual_costs_sow = C_sow / discount_factor_sow
+    individual_investment_costs_sow = (
+        nourish_cost_sow + relocate_cost_sow
+    ) / discount_factor_sow
+    individual_damage_costs_sow = damage_cost_sow / discount_factor_sow
+    individual_npv_sow = (B_sow - C_sow) / discount_factor_sow
+
+    # Accumulate costs and benefits
+    accumulated_costs_sow = np.cumsum(individual_costs_sow)[-1]
+    accumulated_investment_costs_sow = np.cumsum(individual_investment_costs_sow)[-1]
+    accumulated_damage_costs_sow = np.cumsum(individual_damage_costs_sow)[-1]
+    accumulated_benefits_sow = np.cumsum(individual_benefits_sow)[-1]
+    accumulated_npv_sow = np.cumsum(individual_npv_sow)[-1]
+
+    total_costs_sum = accumulated_investment_costs_sow + accumulated_damage_costs_sow
+
+    # Return based on number of objectives
+    if num_objectives == 2:
+        return (
+            accumulated_benefits_sow,
+            accumulated_costs_sow,
+        )
+    elif num_objectives == 5:
+        return (
+            accumulated_npv_sow,
+            accumulated_benefits_sow,
+            accumulated_investment_costs_sow,
+            accumulated_damage_costs_sow,
+            reliability_sow,
+        )
+
+
+def run_genetic_algorithm_on_configuration(
+    parameter_set, guess_strategy, MU, LAMBDA, NGEN, CXPB, MUTPB
+):
+    """
+    Runs a genetic algorithm configuration using the provided parameters.
+
+    :param parameter_set: A dictionary containing simulation parameters.
+    :param guess_strategy: An initial strategy to include in the population.
+    :param MU: The population size.
+    :param LAMBDA: The number of offspring to create.
+    :param NGEN: The number of generations to evolve.
+    :param CXPB: The probability of crossover.
+    :param MUTPB: The probability of mutation.
+    :return: A tuple containing the final population, hall of fame,
+             hall of fame fitness, statistics, logbook, generations,
+             and fitness data.
+    """
+
+    creator.create(
+        "Fitness",
+        base.Fitness,
+        weights=(
+            1.0,
+            -1.0,
+        ),
+    )
+    creator.create("Individual", list, fitness=creator.Fitness)
+
+    size_of_individual = parameter_set["sim_length"]
+    toolbox = base.Toolbox()
+
+    toolbox.register(
+        "individual", get_valid_ind, creator.Individual, size_of_individual
+    )
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    population = toolbox.population(n=MU)
+
+    toolbox.register("evaluate", evaluate_pathway_sow, pars=parameter_set)
+    toolbox.register("mate", crossover_list, n_time_steps=size_of_individual)
+    toolbox.register("mutate", mutate_list, min_gap=parameter_set["minInterval"])
+    toolbox.register("select", selNSGA2)
+
+    cpu_count = multiprocessing.cpu_count()
+    print(f"CPU count: {cpu_count}")
+
+    pool = multiprocessing.Pool(cpu_count)
+    toolbox.register("map", pool.map)
+
+    print("Precomputation complete --- run genetic algorithm")
+
+    pop, stats, hof, logbook, all_generations, all_fitness = genetic_algorithm(
+        toolbox, guess_strategy, MU, LAMBDA, CXPB, MUTPB, NGEN, hack=True
+    )
+
+    pool.close()
+
+    pool = multiprocessing.Pool(processes=cpu_count)
+    async_results = [
+        pool.apply_async(evaluate_pathway_sow, args=(i, parameter_set))
+        for i in hof.items
+    ]
+    hof_fitness = [ar.get() for ar in async_results]
+
+    pool.close()
+
+    return pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness
