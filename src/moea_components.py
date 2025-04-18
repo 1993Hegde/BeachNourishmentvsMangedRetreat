@@ -250,3 +250,115 @@ def get_valid_ind(icls, size_of_individual):
     individual = icls(base_list)
 
     return individual
+
+
+def crossover_list(ind1, ind2, n_time_steps):
+    """
+    Performs a crossover between two individuals to produce two children.
+
+    :param ind1: The first parent individual.
+    :param ind2: The second parent individual.
+    :param n_time_steps: The number of time steps in the individuals.
+    :return: A tuple containing the two child individuals.
+    """
+
+    random_location = [i for i in range(n_time_steps)]
+    crossover_location = random.choice(random_location)
+
+    child1 = ind1[:crossover_location] + ind2[crossover_location:]
+    child2 = ind2[:crossover_location] + ind1[crossover_location:]
+
+    if child1.count(2) > 1:
+        r_indices = [i for i, x in enumerate(child1) if x == 2]
+        r_indices.pop(random.randrange(len(r_indices)))
+        child1 = [
+            random.choice([0, 1]) if i in r_indices else child1[i]
+            for i in range(len(child1))
+        ]
+
+    if child2.count(2) > 1:
+        r_indices = [i for i, x in enumerate(child2) if x == 2]
+        r_indices.pop(random.randrange(len(r_indices)))
+        child2 = [
+            random.choice([0, 1]) if i in r_indices else child2[i]
+            for i in range(len(child2))
+        ]
+
+    child1 = [
+        child1[i]
+        if i == 0
+        else 0
+        if child1[i] == 1 and child1[i - 1] == 1
+        else child1[i]
+        for i in range(len(child1))
+    ]
+    child2 = [
+        child2[i]
+        if i == 0
+        else 0
+        if child2[i] == 1 and child2[i - 1] == 1
+        else child2[i]
+        for i in range(len(child2))
+    ]
+
+    child1 = creator.Individual(child1)
+    child2 = creator.Individual(child2)
+
+    return child1, child2
+
+
+def mutate_list(individual, min_gap):
+    """
+    Mutates an individual by potentially altering its genes according to defined rules.
+
+    This function may replace '2' with a random choice of 0 or 1, handle multiple
+    occurrences of '2', and allow '2' to move one position in either direction.
+
+    :param individual: The individual to be mutated.
+    :param min_gap: Not currently used; can be used for further mutation logic.
+    :return: A tuple containing the mutated individual.
+    """
+
+    k = random.choice([0, 1])
+
+    if k == 1 and individual.count(2) != 0:
+        replace_index = individual.index(2)
+        individual[replace_index] = random.choice([0, 1])
+
+    if individual.count(2) > 1:
+        r_indices = [i for i, x in enumerate(individual) if x == 2]
+        r_indices.pop(random.randrange(len(r_indices)))
+        individual = [
+            random.choice([0, 1]) if i in r_indices else individual[i]
+            for i in range(len(individual))
+        ]
+
+    if 2 in individual and random.random() < 0.1:
+        index_of_2 = individual.index(2)
+
+        if index_of_2 > 0 and index_of_2 < len(individual) - 1:
+            # Randomly move the '2' to the next or previous step
+            new_index = index_of_2 + random.choice([-1, 1])
+        elif index_of_2 == 0:
+            # '2' can only move forward
+            new_index = index_of_2 + 1
+        else:
+            # '2' can only move backward
+            new_index = index_of_2 - 1
+
+        # Move the '2'
+        individual[new_index] = 2
+        individual[index_of_2] = random.choice([0, 1])
+
+    individual = [
+        individual[i]
+        if i == 0
+        else 0
+        if individual[i] == 1 and individual[i - 1] == 1
+        else individual[i]
+        for i in range(len(individual))
+    ]
+
+    individual = creator.Individual(individual)
+
+    return (individual,)
