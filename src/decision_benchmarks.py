@@ -1053,9 +1053,9 @@ def solve_army_corps_bcr_max(
     # 4) Compute relevant coastal metrics for each (state, action) in X
     x_array, v_array, L_array, E_array = compute_coastal_state_variables(X_pr, pars)
     C_array, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(
-        X, pars, x_array, v_array, L_array, E_array
+        X_pr, pars, x_array, v_array, L_array, E_array
     )
-    B_array = compute_coastal_benefits(X, pars, x_array, v_array, L_array, E_array)
+    B_array = compute_coastal_benefits(X_pr, pars, x_array, v_array, L_array, E_array)
 
     # Convert X_list to a numpy array for consistent indexing
     # X_np = np.array(X_list, dtype=float)
