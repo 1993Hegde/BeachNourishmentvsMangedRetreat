@@ -339,6 +339,7 @@ def compute_coastal_cost_metrics(
     """
 
     # Unpack columns of X
+    print(type(X))
     tau = X[:, 0]
     t = X[:, 1]
     R = X[:, 2]
@@ -1025,31 +1026,36 @@ def solve_army_corps_bcr_max(
                   np.ndarray, float, np.ndarray]
     """
 
-    # 1) Define the action space and discrete state spaces
-    A = [0, 1]  # e.g. 0 = do nothing, 1 = nourish
-    tau_vals = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
-    time_vals = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
-    relocation_vals = [0, 1, 2]
-    nourished_vals = [0, 1]
+    # 1. Define action space
+    A = [0, 1, 2]
+
+    # 2. Define the discrete values for tau (time since last nourishment)
+    #    and time (current simulation year/step)
+    tau = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+    time = [i for i in range(0, pars["sim_length"] + 1, pars["deltaT"])]
+
+    # 3. Define possible states for relocation and nourishment indicators
+    relocation = [0, 1, 2]
+    nourished = [0, 1]
 
     # 2) Build the (state, action) list and the base state list
-    X_list = list(product(tau_vals, time_vals, relocation_vals, nourished_vals, A))
-    S_list = list(product(tau_vals, time_vals, relocation_vals, nourished_vals))
+    X = list(product(tau, time, relocation, nourished, A))
+    S = list(product(tau, time, relocation, nourished))
 
     # Convert to numpy arrays for downstream operations
-    X_pr = np.array(X_list, dtype=float)
+    X_pr = np.array(X, dtype=float)
 
-    # 3) Build the transition matrix (sparse) for your MDP
-    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(
-        S_list, A, X_pr, pars
-    )
+    # Build the sparse transition matrix
+    print("Building sparse transition matrix...")
+    Q_sparse, s_indices, a_indices = build_sparse_transition_matrix(S, A, X_pr, pars)
+    print("Sparse transition matrix built.")
 
     # 4) Compute relevant coastal metrics for each (state, action) in X
     x_array, v_array, L_array, E_array = compute_coastal_state_variables(X_pr, pars)
     C_array, nourish_cost, relocate_cost, damage_cost = compute_coastal_cost_metrics(
-        X_list, pars, x_array, v_array, L_array, E_array
+        X, pars, x_array, v_array, L_array, E_array
     )
-    B_array = compute_coastal_benefits(X_list, pars, x_array, v_array, L_array, E_array)
+    B_array = compute_coastal_benefits(X, pars, x_array, v_array, L_array, E_array)
 
     # Convert X_list to a numpy array for consistent indexing
     # X_np = np.array(X_list, dtype=float)
@@ -1061,12 +1067,12 @@ def solve_army_corps_bcr_max(
     )
 
     # 6) Find the index of the initial state in S_list
-    S0i = S_list.index(tuple(initial_state))
+    S0i = S.index(tuple(initial_state))
 
     # 7) Solve via your DDP function, obtaining the full solution and simulation results
     (optS, x_final, v_final, L_final, C_final, B_final, accumulated_npv, strategy) = (
         solve_DDP_return_NPV_action_sequence(
-            R, Q_sparse, pars, S_list, X_pr, S0i, s_indices, a_indices
+            R, Q_sparse, pars, S, X_pr, S0i, s_indices, a_indices
         )
     )
 
