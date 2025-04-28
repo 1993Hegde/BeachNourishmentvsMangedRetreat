@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, "../src")  # Adjust the path to import from the src directory
 from decision_benchmarks import *
 import os
-import json
+import pickle
 
 slr_scenario = 1
 pars = baseline_model_instance_with_default_parameters(slr_scenario)
@@ -43,14 +43,16 @@ usace_strategy = optS_usace[:, 4]
 folder_path = os.path.join("..", "results_data")
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)
-npv_file_path = os.path.join("..", "results_data", "npv_maximizing_strategy.json")
-usace_file_path = os.path.join("..", "results_data", "usace_strategy.json")
+npv_file_path = os.path.join("..", "results_data", "npv_maximizing_strategy.pickle")
+usace_file_path = os.path.join("..", "results_data", "usace_strategy.pickle")
 # Save each list as a JSON file
-with open(npv_file_path, "w") as f:
-    json.dump(npv_maximizing_strategy, f, indent=4)
+# Save npv_maximizing_strategy to a pickle file
+with open(npv_file_path, "wb") as f:
+    pickle.dump(npv_maximizing_strategy, f)
 
-with open(usace_file_path, "w") as f:
-    json.dump(usace_strategy, f, indent=4)
+# Save usace_strategy to a pickle file
+with open(usace_file_path, "wb") as f:
+    pickle.dump(usace_strategy, f)
 
 print(f"Saved NPV strategy to {npv_file_path}")
 print(f"Saved USACE strategy to {usace_file_path}")

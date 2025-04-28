@@ -109,11 +109,21 @@ def generate_beach_nourishment_parameters_lhs_samples(
     return lhs_samples
 
 
+def extract_states_of_the_world(dir_name):
+    pwd = os.getcwd()
+    base_path = os.path.join("..", "results_data")
+    os.chdir(base_path)
+    os.chdir(dir_name)
+    param_samples = np.load("lhs_samples.npy")
+    os.chdir(pwd)
+    return param_samples
+
+
 def evaluate_pathway_sow(
     individual: np.ndarray,
     pars: Dict[str, Any],
     num_objectives: int,  # New argument for number of objectives
-) -> Tuple[float, float, ...]:  # Adjusted return type for flexibility
+) -> Tuple[float, float]:  # Adjusted return type for flexibility
     """
     Evaluates the outcomes of a given strategy represented by an individual over a series of time periods.
     The function simulates the evolution of states based on actions taken at each time period,
@@ -148,10 +158,16 @@ def evaluate_pathway_sow(
 
     combo_final = old_state + [individual[-1]]
     state_action.append(combo_final)
-    strategy_individual = np.array(state_action, dtype=object)
-
+    final_state_after_action = state_action.copy()
+    state_final = transition_observed_state(old_state, individual[-1], pars)
+    state_final_combo = state_final + [0]
+    final_state_after_action.append(state_final_combo)
+    strategy_individual = np.array(final_state_after_action, dtype=object)
+    print("State Matrix Length", len(strategy_individual))
     # Calculate costs and benefits
-    x_sow, V_sow, L_sow, E_sow = compute_coastal_variables(strategy_individual, pars)
+    x_sow, V_sow, L_sow, E_sow = compute_coastal_state_variables(
+        strategy_individual, pars
+    )
     C_sow, nourish_cost_sow, relocate_cost_sow, damage_cost_sow = (
         compute_coastal_cost_metrics(
             strategy_individual, pars, x_sow, V_sow, L_sow, E_sow
@@ -195,6 +211,167 @@ def evaluate_pathway_sow(
             accumulated_damage_costs_sow,
             reliability_sow,
         )
+
+
+def beach_nourishment_problem(
+    strategy_states,
+    parameters,  # All parameters in the model
+    b=0.0271 * 10**-3,  # Sea level rise co-efficient
+    delta=0.0265,  # Discount rate
+    alpha=1.033183,  # Co-efficient  : Influence of beach width on property valuation
+    beta=0.98,  # Co-efficient : Infleunce of Sea Level on property valuation
+    d=0,  # Development Rate
+    A=669000,  # Initial Property Valuation
+    W=5 * 10**5,  # Initial Valur of non structural value at risk
+    epsilon=0,  # Co-efficient: Influence of increase in storm intensity with SLR
+    xi=0,  # Co-efficient : Benefits from activities
+    l=0.22,  # Tax rate in St. Lucie County
+    eta=824,  # Land value ($1000/m)
+    phi_conc=193.8357,  # Co-efficient : Concave Damage Function
+):
+    """ """
+    # Assign values from sampling instead of default assignment
+    parameters["b"] = b
+    parameters["delta"] = delta
+    parameters["alpha"] = alpha
+    parameters["beta"] = beta
+    parameters["d"] = d
+    parameters["A"] = A
+    parameters["W"] = W
+    parameters["epsilon"] = epsilon
+    parameters["xi"] = xi
+    parameters["l"] = l
+    parameters["eta"] = eta
+    parameters["phi_conc"] = phi_conc
+    # This chunk below computes the metrics of interest in our problem
+    # Compute beach width, Property Valuation, SLE, expected erosion of strategy
+    x_sow_new, V_sow_new, L_sow_new, E_sow_new = compute_coastal_state_variables(
+        strategy_states, parameters
+    )
+    # Use information computed above to compute the costs total cost, nourishment cost, relocation cost and damage cost of
+    # following the strategy in the current state of the world
+    C_sow_new, nourish_cost_sow_new, relocate_cost_sow_new, damage_cost_sow_new = (
+        compute_coastal_cost_metrics(
+            strategy_states, parameters, x_sow_new, V_sow_new, L_sow_new, E_sow_new
+        )
+    )
+    # Compute benefits due to recreation and development
+    B_sow_new = compute_benefits_xVLE_precalculated_new(
+        strategy_states, parameters, x_sow_new, V_sow_new, L_sow_new, E_sow_new
+    )
+    # Compute discount factor across the time horizon
+    discount_factor_sow = (1 + parameters["delta"]) ** np.arange(pars["sim_length"])
+    # Compute new present value over time & the sum
+    individual_npv_sow_new = (B_sow_new - C_sow_new) / discount_factor_sow
+    accumulated_npv_sow = np.cumsum(individual_npv_sow_new)[-1]
+    # Compute discounted benefits over time & sum them up
+    individual_benefits_sow_new = B_sow_new / discount_factor_sow
+    accumulated_benefits_sow = np.cumsum(individual_benefits_sow_new)[-1]
+    # Compute total discounted costs over time and sum them up
+    individual_costs_sow_new = C_sow_new / discount_factor_sow
+    accumulated_costs_sow = np.cumsum(individual_costs_sow_new)[-1]
+    # Compute individual investment costs over time
+    individual_investment_costs_sow_new = (
+        nourish_cost_sow_new + relocate_cost_sow_new
+    ) / discount_factor_sow
+    accumulated_investment_costs_sow = np.cumsum(individual_investment_costs_sow_new)[
+        -1
+    ]
+    # Compute individual damage costs over time
+    individual_damage_costs_sow_new = damage_cost_sow_new / discount_factor_sow
+    accumulated_damage_costs_sow = np.cumsum(individual_damage_costs_sow_new)[-1]
+    # Compute reliability of strategy for the state of the world - Number of time steps wherer there is a beach
+    reliability_sow_new = np.count_nonzero(x_sow_new) / parameters["sim_length"]
+    # Compute BCR of strategy in the state of the world
+    bcr_sow_new = accumulated_benefits_sow / accumulated_costs_sow
+    # Compute whether or not the BCR passes the 2.5 test
+    if bcr_sow_new > 2.5:
+        bcr_pass_fail = 1
+    else:
+        bcr_pass_fail = 0
+    # Return all metrics of interest
+    return (
+        accumulated_npv_sow,
+        accumulated_benefits_sow,
+        accumulated_costs_sow,
+        accumulated_investment_costs_sow,
+        accumulated_damage_costs_sow,
+        reliability_sow_new,
+        bcr_sow_new,
+        bcr_pass_fail,
+    )
+
+
+def calculate_beach_nourishment_metrics_strategy(
+    strategy_states, param_samples, parameters
+):
+    """ """
+    b_samples = param_samples[:, 0]
+    epsilon_samples = param_samples[:, 1]
+    phi_conc_samples = param_samples[:, 2]
+    A_samples = param_samples[:, 3]
+    alpha_samples = param_samples[:, 4]
+    beta_samples = param_samples[:, 5]
+    d_samples = param_samples[:, 6]
+    eta_samples = param_samples[:, 7]
+    l_samples = param_samples[:, 8]
+    W_samples = param_samples[:, 9]
+    xi_samples = param_samples[:, 10]
+    delta_samples = param_samples[:, 11]
+    # initialize arrays to store responses
+    npv_value_each_sow = np.zeros(len(param_samples))
+    benefits_each_sow = np.zeros(len(param_samples))
+    costs_each_sow = np.zeros(len(param_samples))
+    investment_costs_each_sow = np.zeros(len(param_samples))
+    damage_costs_each_sow = np.zeros(len(param_samples))
+    reliability_each_sow = np.zeros(len(param_samples))
+    bcr_each_sow = np.zeros(len(param_samples))
+    bcr_pass_fail_each_sow = np.zeros(len(param_samples))
+    # run model across Sobol samples
+    for i in range(0, len(param_samples)):
+        # if i%1000 ==0:
+        #     print("Running sample " + str(i) + ' of ' + str(len(param_samples)))
+        (
+            npv_value_each_sow[i],
+            benefits_each_sow[i],
+            costs_each_sow[i],
+            investment_costs_each_sow[i],
+            damage_costs_each_sow[i],
+            reliability_each_sow[i],
+            bcr_each_sow[i],
+            bcr_pass_fail_each_sow[i],
+        ) = beach_nourishment_problem(
+            strategy_states,
+            parameters,  # All parameters in the model
+            b=b_samples[i],  # Sea level rise co-efficient
+            delta=delta_samples[i],  # Discount rate
+            alpha=alpha_samples[
+                i
+            ],  # Co-efficient  : Influence of beach width on property valuation
+            beta=beta_samples[
+                i
+            ],  # Co-efficient : Infleunce of Sea Level on property valuation
+            d=d_samples[i],  # Development Rate
+            A=A_samples[i],  # Initial Property Valuation
+            W=W_samples[i],  # Initial Valur of non structural value at risk
+            epsilon=epsilon_samples[
+                i
+            ],  # Co-efficient: Influence of increase in storm intensity with SLR
+            xi=xi_samples[i],  # Co-efficient : Benefits from activities
+            l=l_samples[i],  # Tax rate in St. Lucie County
+            eta=eta_samples[i],  # Land value ($1000/m)
+            phi_conc=phi_conc_samples[i],  # Co-efficient : Concave Damage Function
+        )
+    return (
+        npv_value_each_sow,
+        benefits_each_sow,
+        costs_each_sow,
+        investment_costs_each_sow,
+        damage_costs_each_sow,
+        reliability_each_sow,
+        bcr_each_sow,
+        bcr_pass_fail_each_sow,
+    )
 
 
 def run_genetic_algorithm_on_configuration(
