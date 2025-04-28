@@ -43,8 +43,8 @@ usace_strategy = optS_usace[:, 4]
 folder_path = os.path.join("..", "results_data")
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)
-npv_file_path = os.path.join("..", "results_data", "npv_maximizing_strategy.json")
-usace_file_path = os.path.join("..", "results_data", "usace_strategy.json")
+npv_file_path = os.path.join("..", "results_data", "npv_maximizing_strategy.pickle")
+usace_file_path = os.path.join("..", "results_data", "usace_strategy.pickle")
 # Save each list as a JSON file
 # Save npv_maximizing_strategy to a pickle file
 with open(npv_file_path, "wb") as f:
