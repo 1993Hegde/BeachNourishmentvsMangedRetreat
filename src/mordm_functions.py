@@ -119,7 +119,7 @@ def extract_states_of_the_world(dir_name):
     return param_samples
 
 
-def evaluate_pathway_sow(
+def evaluate_beach_bourishment_problem_on_strategy_best_guess_sow(
     individual: np.ndarray,
     pars: Dict[str, Any],
     num_objectives: int,  # New argument for number of objectives
@@ -138,65 +138,19 @@ def evaluate_pathway_sow(
     :return: A tuple containing the relevant accumulated metrics based on the number of objectives.
     :rtype: Tuple[float, float, ...]
     """
-    # Validate number of objectives
-    if num_objectives not in [2, 5]:
-        return "Error: Current model has only been written for 2 and 5 objectives."
-
     initial_state = (0, 0, 0, 0)
-    states_in_path = [initial_state]
-    old_state = initial_state
-    state_action = []
-    sample_pars = pars
-
-    for time_period in range(sample_pars["sim_length"] - 1):
-        action = individual[time_period]
-        combo = list(old_state) + [action]
-        new_state = transition_observed_state(old_state, action, sample_pars)
-        states_in_path.append(new_state)
-        old_state = new_state
-        state_action.append(combo)
-
-    combo_final = old_state + [individual[-1]]
-    state_action.append(combo_final)
-    final_state_after_action = state_action.copy()
-    state_final = transition_observed_state(old_state, individual[-1], pars)
-    state_final_combo = state_final + [0]
-    final_state_after_action.append(state_final_combo)
-    strategy_individual = np.array(final_state_after_action, dtype=object)
-    print("State Matrix Length", len(strategy_individual))
-    # Calculate costs and benefits
-    x_sow, V_sow, L_sow, E_sow = compute_coastal_state_variables(
-        strategy_individual, pars
-    )
-    C_sow, nourish_cost_sow, relocate_cost_sow, damage_cost_sow = (
-        compute_coastal_cost_metrics(
-            strategy_individual, pars, x_sow, V_sow, L_sow, E_sow
-        )
-    )
-    B_sow = compute_coastal_benefits(
-        strategy_individual, pars, x_sow, V_sow, L_sow, E_sow
-    )
-
-    # Compute reliability and discounted values
-    reliability_sow = np.count_nonzero(x_sow) / pars["sim_length"]
-    discount_factor_sow = (1 + pars["delta"]) ** np.arange(pars["sim_length"])
-    individual_benefits_sow = B_sow / discount_factor_sow
-    individual_costs_sow = C_sow / discount_factor_sow
-    individual_investment_costs_sow = (
-        nourish_cost_sow + relocate_cost_sow
-    ) / discount_factor_sow
-    individual_damage_costs_sow = damage_cost_sow / discount_factor_sow
-    individual_npv_sow = (B_sow - C_sow) / discount_factor_sow
-
-    # Accumulate costs and benefits
-    accumulated_costs_sow = np.cumsum(individual_costs_sow)[-1]
-    accumulated_investment_costs_sow = np.cumsum(individual_investment_costs_sow)[-1]
-    accumulated_damage_costs_sow = np.cumsum(individual_damage_costs_sow)[-1]
-    accumulated_benefits_sow = np.cumsum(individual_benefits_sow)[-1]
-    accumulated_npv_sow = np.cumsum(individual_npv_sow)[-1]
-
-    total_costs_sum = accumulated_investment_costs_sow + accumulated_damage_costs_sow
-
+    time_horizon = pars["sim_length"]
+    strategy_states = compute_state_action_transition(individual, initial_state, pars)
+    (
+        accumulated_npv_sow,
+        accumulated_benefits_sow,
+        accumulated_costs_sow,
+        accumulated_investment_costs_sow,
+        accumulated_damage_costs_sow,
+        reliability_sow_new,
+        bcr_sow_new,
+        bcr_pass_fail,
+    ) = beach_nourishment_problem(strategy_states, pars)
     # Return based on number of objectives
     if num_objectives == 2:
         return (
@@ -213,18 +167,82 @@ def evaluate_pathway_sow(
         )
 
 
+def compute_state_action_transition(strategy, initial_state, pars):
+    """
+    Compute the sequence of state-action pairs encountered by following a given strategy over a time horizon.
+
+    This function takes an initial state and a strategy (sequence of actions), then iteratively computes
+    the resulting states and pairs each state with the corresponding action taken. It returns an array of
+    all state-action combinations over the specified time horizon.
+
+    Parameters
+    ----------
+    strategy : list or array-like
+        Sequence of actions to be followed at each time step. Length should be at least equal to time_horizon.
+    initial_state : tuple or list
+        The starting state of the system before any actions are taken.
+    time_horizon : int
+        The total number of time steps to simulate. The computed state-action sequence will have this length.
+
+    Returns
+    -------
+    np.ndarray
+        An array of shape (time_horizon, state_dimension + 1), where each row is a combination of a state vector
+        concatenated with the action taken at that time step.
+    """
+    # Define initial state of the problem
+    # initial_state = (0, 0, 0, 0)
+    # This chunk below computes the state-action sequences encountered by following the action sequence in the strategy
+    # Create an empty list to track all states that the strategy goes through
+    states_in_path = []
+    # Set the first state to be the initial state
+    old_state = initial_state
+    # Add the first state to the tracker
+    states_in_path.append(initial_state)
+    # Create an empty list of the state-action sequences that we'll have when we follow the strategy
+    state_action = []
+    # Loop through all the actions taken in the strategy and compute state-action combination sequences
+    time_horizon = pars["sim_length"]
+    for time_period in range(time_horizon - 1):
+        # Find out what action is taken at time_period
+        action = strategy[time_period]
+        # Find the combination of state and action
+        combo = list(old_state) + [action]
+        # Use the state relationships to figure out what state we'll be in next
+        new_state = transition_observed_state(old_state, action, pars)
+        # Add new state to the list of states
+        states_in_path.append(new_state)
+        # Fix the previous state to compute the next state
+        old_state = new_state
+        # Add the state-action combination to the state-action combination sequence
+        state_action.append(combo)
+    # Find the final state-action combination
+    combo_final = old_state + [strategy[-1]]
+    # Add final combination to the state-action sequence tracker
+    state_action.append(combo_final)
+    # Find the last state after the action has taken place at the end of the time horizon
+    final_state_after_action = state_action.copy()
+    state_final = transition_observed_state(old_state, strategy[-1], pars)
+    # Use this information
+    state_final_combo = state_final + [0]
+    final_state_after_action.append(state_final_combo)
+    # Find the array of state action combinations procuced by the strategy
+    strategy_states = np.array(final_state_after_action, dtype=object)
+    return strategy_states
+
+
 def beach_nourishment_problem(
     strategy_states,
     parameters,  # All parameters in the model
     b=0.0271 * 10**-3,  # Sea level rise co-efficient
-    delta=0.0265,  # Discount rate
-    alpha=1.033183,  # Co-efficient  : Influence of beach width on property valuation
-    beta=0.98,  # Co-efficient : Infleunce of Sea Level on property valuation
+    delta=0.035,  # Discount rate
+    alpha=1.025,  # Co-efficient  : Influence of beach width on property valuation
+    beta=0.975,  # Co-efficient : Infleunce of Sea Level on property valuation
     d=0,  # Development Rate
     A=669000,  # Initial Property Valuation
     W=5 * 10**5,  # Initial Valur of non structural value at risk
-    epsilon=0,  # Co-efficient: Influence of increase in storm intensity with SLR
-    xi=0,  # Co-efficient : Benefits from activities
+    epsilon=0.05,  # Co-efficient: Influence of increase in storm intensity with SLR
+    xi=0.05,  # Co-efficient : Benefits from activities
     l=0.22,  # Tax rate in St. Lucie County
     eta=824,  # Land value ($1000/m)
     phi_conc=193.8357,  # Co-efficient : Concave Damage Function
@@ -256,11 +274,13 @@ def beach_nourishment_problem(
         )
     )
     # Compute benefits due to recreation and development
-    B_sow_new = compute_benefits_xVLE_precalculated_new(
+    B_sow_new = compute_coastal_benefits(
         strategy_states, parameters, x_sow_new, V_sow_new, L_sow_new, E_sow_new
     )
     # Compute discount factor across the time horizon
-    discount_factor_sow = (1 + parameters["delta"]) ** np.arange(pars["sim_length"])
+    discount_factor_sow = (1 + parameters["delta"]) ** np.arange(
+        parameters["sim_length"] + 1
+    )
     # Compute new present value over time & the sum
     individual_npv_sow_new = (B_sow_new - C_sow_new) / discount_factor_sow
     accumulated_npv_sow = np.cumsum(individual_npv_sow_new)[-1]
