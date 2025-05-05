@@ -110,14 +110,13 @@ def eaMuPlusLambda_hack(
 
     # Unpack the fitness and extra information
     fitnesses, extra_infos = zip(*toolbox.map(toolbox.evaluate, invalid_ind))
-
     # Assign both fitness and extra information to individuals
     for ind, fit, extra_info in zip(invalid_ind, fitnesses, extra_infos):
         ind.fitness.values = fit  # Assign the fitness values
         ind.extra_info = extra_info  # Store the additional information
 
         # Optional: Print the extra_info for debugging
-        print(f"Post-evaluation extra_info for individual: {ind.extra_info}")
+        # print(f"Post-evaluation extra_info for individual: {ind.extra_info}")
 
     # Update the hall of fame if applicable
     if halloffame is not None:

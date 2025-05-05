@@ -3,6 +3,8 @@ import numpy as np
 from scipy.stats import beta
 from typing import Tuple, Dict, Any
 import os
+import time
+import pickle
 from decision_benchmarks import *
 from moea_components import *
 
@@ -98,20 +100,22 @@ def generate_beach_nourishment_parameters_lhs_samples(
     # Combine 'b' with the LHS samples
     lhs_samples = np.column_stack((b_samples, lhs_samples))
 
-    # Define the full path for the new directory inside the results_data folder
-    results_dir = os.path.join("..", "results_data", dir_name)
+    # Define the full path including the new folder inside results_data
+    base_results_dir = os.path.join("..", "results_data", "baseline_optimization_runs")
+    if not os.path.exists(base_results_dir):
+        os.makedirs(base_results_dir)
+    # Now the final directory including dir_name
+    results_dir = os.path.join(base_results_dir, dir_name)
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-
     # Save the samples in the specified directory
     np.save(os.path.join(results_dir, "lhs_samples.npy"), lhs_samples)
-
     return lhs_samples
 
 
 def extract_states_of_the_world(dir_name):
     pwd = os.getcwd()
-    base_path = os.path.join("..", "results_data")
+    base_path = os.path.join("..", "results_data", "baseline_optimization_runs")
     os.chdir(base_path)
     os.chdir(dir_name)
     param_samples = np.load("lhs_samples.npy")
@@ -119,10 +123,53 @@ def extract_states_of_the_world(dir_name):
     return param_samples
 
 
-def evaluate_beach_bourishment_problem_on_strategy_best_guess_sow(
+def evaluate_beach_nourishment_problem_on_strategy_best_guess_sow(
     individual: np.ndarray,
-    pars: Dict[str, Any],
-    num_objectives: int,  # New argument for number of objectives
+    pars: Dict[str, Any],  # New argument for number of objectives
+) -> Tuple[float, float]:  # Adjusted return type for flexibility
+    """
+    Evaluates the outcomes of a given strategy represented by an individual over a series of time periods.
+    The function simulates the evolution of states based on actions taken at each time period,
+    calculates associated costs and benefits, and returns accumulated benefits and costs for the strategy.
+    :param individual: A NumPy array representing the actions taken by the town at each time period.
+    :type individual: np.ndarray
+    :param pars: A dictionary of parameters required for the simulation and calculations,
+                 including "sim_length" and "delta".
+    :type pars: Dict[str, Any]
+    :param num_objectives: Number of objectives for evaluation, should be 2 or 5.
+    :type num_objectives: int
+    :return: A tuple containing the relevant accumulated metrics based on the number of objectives.
+    :rtype: Tuple[float, float, ...]
+    """
+    initial_state = (0, 0, 0, 0)
+    time_horizon = pars["sim_length"]
+    strategy_states = compute_state_action_transition(individual, initial_state, pars)
+    (
+        accumulated_npv_sow,
+        accumulated_benefits_sow,
+        accumulated_costs_sow,
+        accumulated_investment_costs_sow,
+        accumulated_damage_costs_sow,
+        reliability_sow_new,
+        bcr_sow_new,
+        bcr_pass_fail,
+    ) = beach_nourishment_problem(strategy_states, pars)
+    return (
+        accumulated_benefits_sow,
+        accumulated_costs_sow,
+    ), {
+        "npv": accumulated_npv_sow,
+        "damage_costs": accumulated_damage_costs_sow,
+        "investment_costs": accumulated_investment_costs_sow,
+        "reliability": reliability_sow_new,
+        "bcr": bcr_sow_new,
+        "bcr_pass_fail": bcr_pass_fail,
+    }
+
+
+def evaluate_beach_nourishment_problem_on_strategy_best_guess_sow_5_objectives(
+    individual: np.ndarray,
+    pars: Dict[str, Any],  # New argument for number of objectives
 ) -> Tuple[float, float]:  # Adjusted return type for flexibility
     """
     Evaluates the outcomes of a given strategy represented by an individual over a series of time periods.
@@ -152,19 +199,16 @@ def evaluate_beach_bourishment_problem_on_strategy_best_guess_sow(
         bcr_pass_fail,
     ) = beach_nourishment_problem(strategy_states, pars)
     # Return based on number of objectives
-    if num_objectives == 2:
-        return (
-            accumulated_benefits_sow,
-            accumulated_costs_sow,
-        )
-    elif num_objectives == 5:
-        return (
-            accumulated_npv_sow,
-            accumulated_benefits_sow,
-            accumulated_investment_costs_sow,
-            accumulated_damage_costs_sow,
-            reliability_sow,
-        )
+    return (
+        accumulated_npv_sow,
+        accumulated_benefits_sow,
+        accumulated_investment_costs_sow,
+        accumulated_damage_costs_sow,
+        reliability_sow_new,
+    ), {
+        "bcr": bcr_sow_new,
+        "bcr_pass_fail": bcr_pass_fail,
+    }
 
 
 def compute_state_action_transition(strategy, initial_state, pars):
@@ -323,9 +367,44 @@ def beach_nourishment_problem(
 
 
 def calculate_beach_nourishment_metrics_strategy(
-    strategy_states, param_samples, parameters
-):
-    """ """
+    strategy_states: np.ndarray, param_samples: np.ndarray, parameters: dict
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """
+    Runs the beach nourishment model across multiple Sobol parameter samples,
+    computing outcome metrics for each sample.
+
+    Parameters
+    ----------
+    strategy_states : np.ndarray
+        The state-action sequence describing the strategy to evaluate.
+    param_samples : np.ndarray
+        A 2D array where each row is a sampled parameter set for the model.
+        The columns correspond to parameters in the following order:
+        b, epsilon, phi_conc, A, alpha, beta, d, eta, l, W, xi, delta.
+    parameters : dict
+        General model parameters dictionary used by the beach nourishment model.
+
+    Returns
+    -------
+    Tuple of eight np.ndarray:
+        npv_value_each_sow: NPV values over all parameter sets.
+        benefits_each_sow: Total benefits for all samples.
+        costs_each_sow: Total costs for all samples.
+        investment_costs_each_sow: Investment costs for all samples.
+        damage_costs_each_sow: Damage costs for all samples.
+        reliability_each_sow: Reliability metric for all samples.
+        bcr_each_sow: Benefit-Cost Ratio for all samples.
+        bcr_pass_fail_each_sow: Binary indicator if BCR passes threshold, for all samples.
+    """
     b_samples = param_samples[:, 0]
     epsilon_samples = param_samples[:, 1]
     phi_conc_samples = param_samples[:, 2]
@@ -349,8 +428,8 @@ def calculate_beach_nourishment_metrics_strategy(
     bcr_pass_fail_each_sow = np.zeros(len(param_samples))
     # run model across Sobol samples
     for i in range(0, len(param_samples)):
-        # if i%1000 ==0:
-        #     print("Running sample " + str(i) + ' of ' + str(len(param_samples)))
+        # if i % 1000 == 0:
+        #     print("Running sample " + str(i) + " of " + str(len(param_samples)))
         (
             npv_value_each_sow[i],
             benefits_each_sow[i],
@@ -394,6 +473,185 @@ def calculate_beach_nourishment_metrics_strategy(
     )
 
 
+def stress_test_strategy_to_states_of_the_world(
+    strategy: np.ndarray, initial_state: tuple, param_samples: np.ndarray, pars: dict
+) -> Tuple[float, float, float, float, float, float, float, float]:
+    """
+    Evaluate the performance of a given strategy across multiple states of the world represented by parameter samples.
+
+    Parameters
+    ----------
+    strategy : np.ndarray
+        Array representing the sequence of actions (strategy) over time.
+    initial_state : tuple
+        The starting state before any actions are taken.
+    param_samples : np.ndarray
+        2D array where each row contains a set of sampled model parameters for simulation.
+    pars : dict
+        General parameter dictionary passed to the model functions.
+
+    Returns
+    -------
+    Tuple containing aggregated metrics averaged across all sampled states of the world:
+        - npv_across_sows : float
+            Average net present value of the strategy.
+        - benefits_across_sows : float
+            Average accumulated benefits.
+        - costs_across_sows : float
+            Average accumulated costs.
+        - investment_costs_across_sows : float
+            Average investment costs.
+        - damage_costs_across_sows : float
+            Average damage costs.
+        - reliability_across_sows : float
+            Average reliability metric.
+        - bcr_across_sows : float
+            Average benefit-cost ratio.
+        - sows_bcr_pass_number : float
+            Fraction of states of the world where BCR passes the defined threshold.
+    """
+
+    time_horizon = len(strategy)
+
+    # Compute the state-action sequences produced by the strategy
+    strategy_states = compute_state_action_transition(strategy, initial_state, pars)
+
+    # Calculate metrics for each sampled state of the world (parameter set)
+    (
+        npv_strategy_each_sow,
+        benefits_strategy_each_sow,
+        costs_strategy_each_sow,
+        investment_costs_strategy_each_sow,
+        damage_costs_strategy_each_sow,
+        reliability_strategy_each_sow,
+        bcr_strategy_each_sow,
+        bcr_pass_fail_strategy_each_sow,
+    ) = calculate_beach_nourishment_metrics_strategy(
+        strategy_states, param_samples, pars
+    )
+
+    # Aggregate metrics by taking means over all parameter samples
+    npv_across_sows = np.mean(npv_strategy_each_sow)
+    benefits_across_sows = np.mean(benefits_strategy_each_sow)
+    costs_across_sows = np.mean(costs_strategy_each_sow)
+    investment_costs_across_sows = np.mean(investment_costs_strategy_each_sow)
+    damage_costs_across_sows = np.mean(damage_costs_strategy_each_sow)
+    reliability_across_sows = np.mean(reliability_strategy_each_sow)
+    bcr_across_sows = np.mean(bcr_strategy_each_sow)
+
+    # Proportion of states of the world passing the BCR threshold
+    sows_bcr_pass_number = np.count_nonzero(bcr_pass_fail_strategy_each_sow) / len(
+        bcr_pass_fail_strategy_each_sow
+    )
+
+    return (
+        npv_across_sows,
+        benefits_across_sows,
+        costs_across_sows,
+        investment_costs_across_sows,
+        damage_costs_across_sows,
+        reliability_across_sows,
+        bcr_across_sows,
+        sows_bcr_pass_number,
+    )
+
+
+def evaluate_individual(individual, param_samples, pars_dict, initial_state):
+    """
+    Evaluates a strategy individual across states of the world and returns fitness values and detailed metrics.
+
+    Parameters
+    ----------
+    individual : np.ndarray
+        Array representing the strategy (sequence of actions).
+    param_samples : np.ndarray
+        Parameter samples representing different states of the world.
+    pars_dict : dict
+        Dictionary of parameters required for the model.
+    initial_state : tuple
+        Initial system state before applying the strategy.
+
+    Returns
+    -------
+    tuple
+        (
+            (benefits, costs),  # Fitness tuple: to be maximized/minimized accordingly
+            dict with additional metrics:
+                'npv', 'damage_costs', 'investment_costs', 'reliability', 'bcr', 'bcr_pass_fail'
+        )
+    """
+    results = stress_test_strategy_to_states_of_the_world(
+        individual, initial_state, param_samples, pars_dict
+    )
+    (
+        npv,
+        benefits,
+        costs,
+        investment_costs,
+        damage_costs,
+        reliability,
+        bcr,
+        bcr_pass_fail,
+    ) = results
+
+    return (benefits, costs), {
+        "npv": npv,
+        "damage_costs": damage_costs,
+        "investment_costs": investment_costs,
+        "reliability": reliability,
+        "bcr": bcr,
+        "bcr_pass_fail": bcr_pass_fail,
+    }
+
+
+def evaluate_individual_5_objectives(
+    individual, param_samples, pars_dict, initial_state
+):
+    """
+    Evaluates a strategy individual across states of the world and returns fitness values and detailed metrics.
+
+    Parameters
+    ----------
+    individual : np.ndarray
+        Array representing the strategy (sequence of actions).
+    param_samples : np.ndarray
+        Parameter samples representing different states of the world.
+    pars_dict : dict
+        Dictionary of parameters required for the model.
+    initial_state : tuple
+        Initial system state before applying the strategy.
+
+    Returns
+    -------
+    tuple
+        (
+            (benefits, costs),  # Fitness tuple: to be maximized/minimized accordingly
+            dict with additional metrics:
+                'npv', 'damage_costs', 'investment_costs', 'reliability', 'bcr', 'bcr_pass_fail'
+        )
+    """
+    results = stress_test_strategy_to_states_of_the_world(
+        individual, initial_state, param_samples, pars_dict
+    )
+    (
+        npv,
+        benefits,
+        costs,
+        investment_costs,
+        damage_costs,
+        reliability,
+        bcr,
+        bcr_pass_fail,
+    ) = results
+
+    return (npv, benefits, investment_costs, damage_costs, reliability), {
+        "costs": costs,
+        "reliability": reliability,
+        "bcr": bcr,
+        "bcr_pass_fail": bcr_pass_fail,
+    }
+
+
 def run_genetic_algorithm_on_configuration(
     parameter_set, guess_strategy, MU, LAMBDA, NGEN, CXPB, MUTPB
 ):
@@ -431,7 +689,11 @@ def run_genetic_algorithm_on_configuration(
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     population = toolbox.population(n=MU)
 
-    toolbox.register("evaluate", evaluate_pathway_sow, pars=parameter_set)
+    toolbox.register(
+        "evaluate",
+        evaluate_beach_nourishment_problem_on_strategy_best_guess_sow,
+        pars=parameter_set,
+    )
     toolbox.register("mate", crossover_list, n_time_steps=size_of_individual)
     toolbox.register("mutate", mutate_list, min_gap=parameter_set["minInterval"])
     toolbox.register("select", selNSGA2)
@@ -452,7 +714,10 @@ def run_genetic_algorithm_on_configuration(
 
     pool = multiprocessing.Pool(processes=cpu_count)
     async_results = [
-        pool.apply_async(evaluate_pathway_sow, args=(i, parameter_set))
+        pool.apply_async(
+            evaluate_beach_nourishment_problem_on_strategy_best_guess_sow,
+            args=(i, parameter_set),
+        )
         for i in hof.items
     ]
     hof_fitness = [ar.get() for ar in async_results]
@@ -460,3 +725,773 @@ def run_genetic_algorithm_on_configuration(
     pool.close()
 
     return pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness
+
+
+def run_genetic_algorithm_on_configuration_5_objectives(
+    parameter_set, guess_strategy, MU, LAMBDA, NGEN, CXPB, MUTPB
+):
+    """
+    Runs a genetic algorithm configuration using the provided parameters.
+
+    :param parameter_set: A dictionary containing simulation parameters.
+    :param guess_strategy: An initial strategy to include in the population.
+    :param MU: The population size.
+    :param LAMBDA: The number of offspring to create.
+    :param NGEN: The number of generations to evolve.
+    :param CXPB: The probability of crossover.
+    :param MUTPB: The probability of mutation.
+    :return: A tuple containing the final population, hall of fame,
+             hall of fame fitness, statistics, logbook, generations,
+             and fitness data.
+    """
+
+    creator.create(
+        "Fitness",
+        base.Fitness,
+        weights=(1.0, 1.0, -1.0, -1.0, 1.0),
+    )
+    creator.create("Individual", list, fitness=creator.Fitness)
+
+    size_of_individual = parameter_set["sim_length"]
+    toolbox = base.Toolbox()
+
+    toolbox.register(
+        "individual", get_valid_ind, creator.Individual, size_of_individual
+    )
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    population = toolbox.population(n=MU)
+
+    toolbox.register(
+        "evaluate",
+        evaluate_beach_nourishment_problem_on_strategy_best_guess_sow_5_objectives,
+        pars=parameter_set,
+    )
+    toolbox.register("mate", crossover_list, n_time_steps=size_of_individual)
+    toolbox.register("mutate", mutate_list, min_gap=parameter_set["minInterval"])
+    toolbox.register("select", selNSGA2)
+
+    cpu_count = multiprocessing.cpu_count()
+    print(f"CPU count: {cpu_count}")
+
+    pool = multiprocessing.Pool(cpu_count)
+    toolbox.register("map", pool.map)
+
+    print("Precomputation complete --- run genetic algorithm")
+
+    pop, stats, hof, logbook, all_generations, all_fitness = genetic_algorithm(
+        toolbox, guess_strategy, MU, LAMBDA, CXPB, MUTPB, NGEN, hack=True
+    )
+
+    pool.close()
+
+    pool = multiprocessing.Pool(processes=cpu_count)
+    async_results = [
+        pool.apply_async(
+            evaluate_beach_nourishment_problem_on_strategy_best_guess_sow,
+            args=(i, parameter_set),
+        )
+        for i in hof.items
+    ]
+    hof_fitness = [ar.get() for ar in async_results]
+
+    pool.close()
+
+    return pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness
+
+
+def run_genetic_algorithm_across_sows(
+    param_samples: np.ndarray,
+    pars_dict: Dict[str, Any],
+    initial_state: tuple,
+    strategy_seeds: List,
+    MU: int,
+    LAMBDA: int,
+    NGEN: int,
+    CXPB: float,
+    MUTPB: float,
+) -> Tuple:
+    """
+    Runs a genetic algorithm to optimize strategies across multiple states of the world (SOWs).
+
+    Parameters
+    ----------
+    param_samples : np.ndarray
+        Parameter samples defining the different states of the world for evaluation.
+    pars_dict : dict
+        Dictionary containing model parameters.
+    initial_state : tuple
+        Initial state before applying strategies.
+    strategy_seeds : list
+        List of initial guess strategies to seed the population.
+    MU : int
+        Population size.
+    LAMBDA : int
+        Number of offspring per generation.
+    NGEN : int
+        Number of generations for evolution.
+    CXPB : float
+        Crossover probability.
+    MUTPB : float
+        Mutation probability.
+
+    Returns
+    -------
+    tuple
+        (population, hall_of_fame, hall_of_fame_fitness, hall_of_fame_extra_info, stats, logbook, all_generations, all_fitness)
+    """
+
+    size_of_individual = pars_dict["sim_length"]
+
+    # Define the custom fitness and individual classes
+    # Fitness: maximize benefits (weight 1.0), minimize costs (weight -1.0)
+    creator.create("Fitness", base.Fitness, weights=(1.0, -1.0))
+
+    # Individual: use list with attached fitness & extra_info dictionary
+    creator.create("Individual", list, fitness=creator.Fitness, extra_info={})
+
+    toolbox = base.Toolbox()
+
+    # Register individual generator (assuming get_valid_ind returns a valid strategy)
+    toolbox.register(
+        "individual", get_valid_ind, creator.Individual, size_of_individual
+    )
+
+    # Initialize population
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    population = toolbox.population(n=MU)
+
+    # Replace the last MU individuals with seeds
+    for guess_strategy in strategy_seeds:
+        population.pop()
+        population.insert(0, guess_strategy)
+
+    # Register evaluation function with fixed parameters
+    toolbox.register(
+        "evaluate",
+        evaluate_individual,
+        param_samples=param_samples,
+        pars_dict=pars_dict,
+        initial_state=initial_state,
+    )
+
+    # Register genetic operators
+    toolbox.register("mate", crossover_list, n_time_steps=size_of_individual)
+    toolbox.register("mutate", mutate_list, min_gap=pars_dict.get("minInterval", 1))
+    toolbox.register("select", tools.selNSGA2)
+
+    # Setup multiprocessing pool, leaving 4 CPUs free
+    cpu_count = max(multiprocessing.cpu_count() - 4, 1)
+    print(f"Using {cpu_count} CPUs for multiprocessing")
+    pool = multiprocessing.Pool(cpu_count)
+    toolbox.register("map", pool.map)
+
+    print("Precomputation complete --- running genetic algorithm...")
+
+    # Run genetic algorithm (assumes you have a custom 'genetic_algorithm' function)
+    pop, stats, hof, logbook, all_generations, all_fitness = genetic_algorithm(
+        toolbox, strategy_seeds, MU, LAMBDA, CXPB, MUTPB, NGEN, hack=True
+    )
+
+    # Close multiprocessing pool
+    pool.close()
+    pool.join()
+
+    # Extract fitness values and extra info from hall of fame individuals
+    hof_fitness = [ind.fitness.values for ind in hof]
+    hof_extra_info = [getattr(ind, "extra_info", {}) for ind in hof]
+
+    return (
+        pop,
+        hof,
+        hof_fitness,
+        hof_extra_info,
+        stats,
+        logbook,
+        all_generations,
+        all_fitness,
+    )
+
+
+def run_genetic_algorithm_across_sows_5_objectives(
+    param_samples: np.ndarray,
+    pars_dict: Dict[str, Any],
+    initial_state: tuple,
+    strategy_seeds: List,
+    MU: int,
+    LAMBDA: int,
+    NGEN: int,
+    CXPB: float,
+    MUTPB: float,
+) -> Tuple:
+    """
+    Runs a genetic algorithm to optimize strategies across multiple states of the world (SOWs).
+
+    Parameters
+    ----------
+    param_samples : np.ndarray
+        Parameter samples defining the different states of the world for evaluation.
+    pars_dict : dict
+        Dictionary containing model parameters.
+    initial_state : tuple
+        Initial state before applying strategies.
+    strategy_seeds : list
+        List of initial guess strategies to seed the population.
+    MU : int
+        Population size.
+    LAMBDA : int
+        Number of offspring per generation.
+    NGEN : int
+        Number of generations for evolution.
+    CXPB : float
+        Crossover probability.
+    MUTPB : float
+        Mutation probability.
+
+    Returns
+    -------
+    tuple
+        (population, hall_of_fame, hall_of_fame_fitness, hall_of_fame_extra_info, stats, logbook, all_generations, all_fitness)
+    """
+
+    size_of_individual = pars_dict["sim_length"]
+
+    # Define the custom fitness and individual classes
+    # Fitness: maximize benefits (weight 1.0), minimize costs (weight -1.0)
+    creator.create("Fitness", base.Fitness, weights=(1.0, 1.0, -1.0, -1.0, 1.0))
+
+    # Individual: use list with attached fitness & extra_info dictionary
+    creator.create("Individual", list, fitness=creator.Fitness, extra_info={})
+
+    toolbox = base.Toolbox()
+
+    # Register individual generator (assuming get_valid_ind returns a valid strategy)
+    toolbox.register(
+        "individual", get_valid_ind, creator.Individual, size_of_individual
+    )
+
+    # Initialize population
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    population = toolbox.population(n=MU)
+
+    # Replace the last MU individuals with seeds
+    for guess_strategy in strategy_seeds:
+        population.pop()
+        population.insert(0, guess_strategy)
+
+    # Register evaluation function with fixed parameters
+    toolbox.register(
+        "evaluate",
+        evaluate_individual_5_objectives,
+        param_samples=param_samples,
+        pars_dict=pars_dict,
+        initial_state=initial_state,
+    )
+
+    # Register genetic operators
+    toolbox.register("mate", crossover_list, n_time_steps=size_of_individual)
+    toolbox.register("mutate", mutate_list, min_gap=pars_dict.get("minInterval", 1))
+    toolbox.register("select", tools.selNSGA2)
+
+    # Setup multiprocessing pool, leaving 4 CPUs free
+    cpu_count = max(multiprocessing.cpu_count() - 4, 1)
+    print(f"Using {cpu_count} CPUs for multiprocessing")
+    pool = multiprocessing.Pool(cpu_count)
+    toolbox.register("map", pool.map)
+
+    print("Precomputation complete --- running genetic algorithm...")
+
+    # Run genetic algorithm (assumes you have a custom 'genetic_algorithm' function)
+    pop, stats, hof, logbook, all_generations, all_fitness = genetic_algorithm(
+        toolbox, strategy_seeds, MU, LAMBDA, CXPB, MUTPB, NGEN, hack=True
+    )
+
+    # Close multiprocessing pool
+    pool.close()
+    pool.join()
+
+    # Extract fitness values and extra info from hall of fame individuals
+    hof_fitness = [ind.fitness.values for ind in hof]
+    hof_extra_info = [getattr(ind, "extra_info", {}) for ind in hof]
+
+    return (
+        pop,
+        hof,
+        hof_fitness,
+        hof_extra_info,
+        stats,
+        logbook,
+        all_generations,
+        all_fitness,
+    )
+
+
+def run_baseline_runs_2objectives(
+    dir_name,
+    param_samples,
+    pars,
+    initial_state,
+    MU: int,
+    LAMBDA: int,
+    NGEN: int,
+    CXPB: float,
+    MUTPB: float,
+    seeds="Yes",
+):
+    nourish_whenever_possible = [
+        1 if i % 2 == 1 else 0 for i in range(pars["sim_length"])
+    ]
+    do_nothing_always = [0] * pars["sim_length"]
+    pwd = os.getcwd()
+    (
+        npv_nourish_when_possible,
+        benefits_nourish_when_possible,
+        costs_nourish_when_possible,
+        investment_costs_nourish_when_possible,
+        damage_costs_nourish_when_possible,
+        reliability_nourish_when_possible,
+        bcr_nourish_when_possible,
+        sows_bcr_pass_nourish_when_possible,
+    ) = stress_test_strategy_to_states_of_the_world(
+        nourish_whenever_possible, initial_state, param_samples, pars
+    )
+    (
+        npv_do_nothing_always,
+        benefits_do_nothing_always,
+        costs_do_nothing_always,
+        investment_costs_do_nothing_always,
+        damage_costs_do_nothing_always,
+        reliability_do_nothing_always,
+        bcr_do_nothing_always,
+        sows_bcr_pass_do_nothing_always,
+    ) = stress_test_strategy_to_states_of_the_world(
+        do_nothing_always, initial_state, param_samples, pars
+    )
+    if seeds == "Yes":
+        strategy_seeds = []
+        strategy_seeds.append(nourish_whenever_possible)
+        strategy_seeds.append(do_nothing_always)
+    else:
+        strategy_seeds = []
+    print("#########################################################")
+    print("Running two objective optimization neglecting uncertainty")
+    print("#########################################################")
+    start_time = time.time()
+    # Go one folder above the current directory
+    parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+    # Define the path to 'results_data/baseline_optimization_runs'
+    target_dir = os.path.join(parent_dir, "results_data", "baseline_optimization_runs")
+    # Define the folder to check/create
+    final_folder = "2objective_no_uncertainty"
+    final_path = os.path.join(target_dir, final_folder)
+    # Create '2objective_no_uncertainty' if it doesn't exist
+    if not os.path.exists(final_path):
+        os.makedirs(final_path)
+    # Change current working directory to the final path
+    os.chdir(final_path)
+    print("Current directory:", os.getcwd())
+    pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness = (
+        run_genetic_algorithm_on_configuration(
+            pars, strategy_seeds, MU, LAMBDA, NGEN, CXPB, MUTPB
+        )
+    )
+    with open("pop.pkl", "wb") as file:
+        pickle.dump(pop, file)
+
+    with open("hof.pkl", "wb") as file:
+        pickle.dump(hof, file)
+
+    with open("hof_fitness.pkl", "wb") as file:
+        pickle.dump(hof_fitness, file)
+
+    # with open("stats.pkl", "wb") as file:
+    #     pickle.dump(stats, file)
+
+    with open("logbook.pkl", "wb") as file:
+        pickle.dump(logbook, file)
+
+    with open("all_generations.pkl", "wb") as file:
+        pickle.dump(all_generations, file)
+
+    with open("all_fitness.pkl", "wb") as file:
+        pickle.dump(all_fitness, file)
+    os.chdir(pwd)
+    end_time = time.time()
+    time_diff = end_time - start_time
+    print("Time to run five objective optimization neglecting uncertainty:", time_diff)
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Finished running two objective optimization neglecting uncertainty")
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Transitioning......Transitioning......Transitioning........")
+    print("##########################################################")
+    print("Running two objective optimization considering uncertainty")
+    print("##########################################################")
+    parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+    target_dir = os.path.join(parent_dir, "results_data", "baseline_optimization_runs")
+    # Define the folder to check/create
+    final_folder = "2objective_considering_uncertainty"
+    final_path = os.path.join(target_dir, final_folder)
+    # Create '2objective_no_uncertainty' if it doesn't exist
+    if not os.path.exists(final_path):
+        os.makedirs(final_path)
+    # Change current working directory to the final path
+    os.chdir(final_path)
+    print("Current directory:", os.getcwd())
+    start_time = time.time()
+    (
+        pop_across_sow,
+        hof_across_sow,
+        hof_fitness_across_sow,
+        hof_extra_across_sow,
+        stats_across_sow,
+        logbook_across_sow,
+        all_generations_across_sow,
+        all_fitness_across_sow,
+    ) = run_genetic_algorithm_across_sows(
+        param_samples,
+        pars,
+        initial_state,
+        strategy_seeds,
+        MU,
+        LAMBDA,
+        NGEN,
+        CXPB,
+        MUTPB,
+    )
+    end_time = time.time()
+    time_diff = end_time - start_time
+    # 1. Save population across SoWs
+    with open("pop_across_sow.pkl", "wb") as file:
+        pickle.dump(pop_across_sow, file)
+    # 2. Save Hall of Fame across SoWs
+    with open("hof_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_across_sow, file)
+    # 3. Save Hall of Fame fitness across SoWs
+    with open("hof_fitness_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_fitness_across_sow, file)
+    # 4. Save extra information related to Hall of Fame
+    with open("hof_extra_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_extra_across_sow, file)
+    # 5. Save statistics across SoWs
+    # with open('stats_across_sow.pkl', 'wb') as file:
+    #     pickle.dump(stats_across_sow, file)
+    # 6. Save logbook across SoWs
+    with open("logbook_across_sow.pkl", "wb") as file:
+        pickle.dump(logbook_across_sow, file)
+    # 7. Save all generations across SoWs
+    with open("all_generations_across_sow.pkl", "wb") as file:
+        pickle.dump(all_generations_across_sow, file)
+    # 8. Save all fitness across SoWs
+    with open("all_fitness_across_sow.pkl", "wb") as file:
+        pickle.dump(all_fitness_across_sow, file)
+    output_data_nourishment = {
+        "npv_nourish_when_possible": npv_nourish_when_possible,
+        "benefits_nourish_when_possible": benefits_nourish_when_possible,
+        "costs_nourish_when_possible": costs_nourish_when_possible,
+        "investment_costs_nourish_when_possible": investment_costs_nourish_when_possible,
+        "damage_costs_nourish_when_possible": damage_costs_nourish_when_possible,
+        "reliability_nourish_when_possible": reliability_nourish_when_possible,
+        "bcr_nourish_when_possible": bcr_nourish_when_possible,
+        "sows_bcr_pass_nourish_when_possible": sows_bcr_pass_nourish_when_possible,
+    }
+    do_nothing_always_data = {
+        "npv_do_nothing_always": npv_do_nothing_always,
+        "benefits_do_nothing_always": benefits_do_nothing_always,
+        "costs_do_nothing_always": costs_do_nothing_always,
+        "investment_costs_do_nothing_always": investment_costs_do_nothing_always,
+        "damage_costs_do_nothing_always": damage_costs_do_nothing_always,
+        "reliability_do_nothing_always": reliability_do_nothing_always,
+        "bcr_do_nothing_always": bcr_do_nothing_always,
+        "sows_bcr_pass_do_nothing_always": sows_bcr_pass_do_nothing_always,
+    }
+    with open("nourish_when_possible.pkl", "wb") as file:
+        pickle.dump(output_data_nourishment, file)
+    with open("do_nothing.pkl", "wb") as file:
+        pickle.dump(do_nothing_always_data, file)
+    os.chdir(pwd)
+    print("Time to run two objective optimization considering uncertainty:", time_diff)
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Finished running two objective optimization considering uncertainty")
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    # print("Running five objective objective optimization neglecting uncertainty")
+    # print("Running five objective objective optimization considering uncertainty")
+    return MU, LAMBDA, NGEN, CXPB, MUTPB
+
+
+def run_baseline_runs_5objectives(
+    dir_name,
+    param_samples,
+    pars,
+    initial_state,
+    MU: int,
+    LAMBDA: int,
+    NGEN: int,
+    CXPB: float,
+    MUTPB: float,
+    seeds="Yes",
+):
+    nourish_whenever_possible = [
+        1 if i % 2 == 1 else 0 for i in range(pars["sim_length"])
+    ]
+    do_nothing_always = [0] * pars["sim_length"]
+    pwd = os.getcwd()
+    (
+        npv_nourish_when_possible,
+        benefits_nourish_when_possible,
+        costs_nourish_when_possible,
+        investment_costs_nourish_when_possible,
+        damage_costs_nourish_when_possible,
+        reliability_nourish_when_possible,
+        bcr_nourish_when_possible,
+        sows_bcr_pass_nourish_when_possible,
+    ) = stress_test_strategy_to_states_of_the_world(
+        nourish_whenever_possible, initial_state, param_samples, pars
+    )
+    (
+        npv_do_nothing_always,
+        benefits_do_nothing_always,
+        costs_do_nothing_always,
+        investment_costs_do_nothing_always,
+        damage_costs_do_nothing_always,
+        reliability_do_nothing_always,
+        bcr_do_nothing_always,
+        sows_bcr_pass_do_nothing_always,
+    ) = stress_test_strategy_to_states_of_the_world(
+        do_nothing_always, initial_state, param_samples, pars
+    )
+    if seeds == "Yes":
+        strategy_seeds = []
+        strategy_seeds.append(nourish_whenever_possible)
+        strategy_seeds.append(do_nothing_always)
+    else:
+        strategy_seeds = []
+    print("#########################################################")
+    print("Running five objective optimization neglecting uncertainty")
+    print("#########################################################")
+    start_time = time.time()
+    # Go one folder above the current directory
+    parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+    # Define the path to 'results_data/baseline_optimization_runs'
+    target_dir = os.path.join(parent_dir, "results_data", "baseline_optimization_runs")
+    # Define the folder to check/create
+    final_folder = "5objective_no_uncertainty"
+    final_path = os.path.join(target_dir, final_folder)
+    # Create '2objective_no_uncertainty' if it doesn't exist
+    if not os.path.exists(final_path):
+        os.makedirs(final_path)
+    # Change current working directory to the final path
+    os.chdir(final_path)
+    print("Current directory:", os.getcwd())
+    pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness = (
+        run_genetic_algorithm_on_configuration_5_objectives(
+            pars, strategy_seeds, MU, LAMBDA, NGEN, CXPB, MUTPB
+        )
+    )
+    with open("pop.pkl", "wb") as file:
+        pickle.dump(pop, file)
+
+    with open("hof.pkl", "wb") as file:
+        pickle.dump(hof, file)
+
+    with open("hof_fitness.pkl", "wb") as file:
+        pickle.dump(hof_fitness, file)
+
+    # with open("stats.pkl", "wb") as file:
+    #     pickle.dump(stats, file)
+
+    with open("logbook.pkl", "wb") as file:
+        pickle.dump(logbook, file)
+
+    with open("all_generations.pkl", "wb") as file:
+        pickle.dump(all_generations, file)
+
+    with open("all_fitness.pkl", "wb") as file:
+        pickle.dump(all_fitness, file)
+    os.chdir(pwd)
+    end_time = time.time()
+    time_diff = end_time - start_time
+    print("Time to run five objective optimization neglecting uncertainty:", time_diff)
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Finished running five objective optimization neglecting uncertainty")
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Transitioning......Transitioning......Transitioning........")
+    print("##########################################################")
+    print("Running five objective optimization considering uncertainty")
+    print("##########################################################")
+    parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+    target_dir = os.path.join(parent_dir, "results_data", "baseline_optimization_runs")
+    # Define the folder to check/create
+    final_folder = "5objective_considering_uncertainty"
+    final_path = os.path.join(target_dir, final_folder)
+    # Create '2objective_no_uncertainty' if it doesn't exist
+    if not os.path.exists(final_path):
+        os.makedirs(final_path)
+    # Change current working directory to the final path
+    os.chdir(final_path)
+    print("Current directory:", os.getcwd())
+    start_time = time.time()
+    (
+        pop_across_sow,
+        hof_across_sow,
+        hof_fitness_across_sow,
+        hof_extra_across_sow,
+        stats_across_sow,
+        logbook_across_sow,
+        all_generations_across_sow,
+        all_fitness_across_sow,
+    ) = run_genetic_algorithm_across_sows_5_objectives(
+        param_samples,
+        pars,
+        initial_state,
+        strategy_seeds,
+        MU,
+        LAMBDA,
+        NGEN,
+        CXPB,
+        MUTPB,
+    )
+    end_time = time.time()
+    time_diff = end_time - start_time
+    # 1. Save population across SoWs
+    with open("pop_across_sow.pkl", "wb") as file:
+        pickle.dump(pop_across_sow, file)
+    # 2. Save Hall of Fame across SoWs
+    with open("hof_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_across_sow, file)
+    # 3. Save Hall of Fame fitness across SoWs
+    with open("hof_fitness_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_fitness_across_sow, file)
+    # 4. Save extra information related to Hall of Fame
+    with open("hof_extra_across_sow.pkl", "wb") as file:
+        pickle.dump(hof_extra_across_sow, file)
+    # 5. Save statistics across SoWs
+    # with open('stats_across_sow.pkl', 'wb') as file:
+    #     pickle.dump(stats_across_sow, file)
+    # 6. Save logbook across SoWs
+    with open("logbook_across_sow.pkl", "wb") as file:
+        pickle.dump(logbook_across_sow, file)
+    # 7. Save all generations across SoWs
+    with open("all_generations_across_sow.pkl", "wb") as file:
+        pickle.dump(all_generations_across_sow, file)
+    # 8. Save all fitness across SoWs
+    with open("all_fitness_across_sow.pkl", "wb") as file:
+        pickle.dump(all_fitness_across_sow, file)
+    output_data_nourishment = {
+        "npv_nourish_when_possible": npv_nourish_when_possible,
+        "benefits_nourish_when_possible": benefits_nourish_when_possible,
+        "costs_nourish_when_possible": costs_nourish_when_possible,
+        "investment_costs_nourish_when_possible": investment_costs_nourish_when_possible,
+        "damage_costs_nourish_when_possible": damage_costs_nourish_when_possible,
+        "reliability_nourish_when_possible": reliability_nourish_when_possible,
+        "bcr_nourish_when_possible": bcr_nourish_when_possible,
+        "sows_bcr_pass_nourish_when_possible": sows_bcr_pass_nourish_when_possible,
+    }
+    do_nothing_always_data = {
+        "npv_do_nothing_always": npv_do_nothing_always,
+        "benefits_do_nothing_always": benefits_do_nothing_always,
+        "costs_do_nothing_always": costs_do_nothing_always,
+        "investment_costs_do_nothing_always": investment_costs_do_nothing_always,
+        "damage_costs_do_nothing_always": damage_costs_do_nothing_always,
+        "reliability_do_nothing_always": reliability_do_nothing_always,
+        "bcr_do_nothing_always": bcr_do_nothing_always,
+        "sows_bcr_pass_do_nothing_always": sows_bcr_pass_do_nothing_always,
+    }
+    with open("nourish_when_possible.pkl", "wb") as file:
+        pickle.dump(output_data_nourishment, file)
+    with open("do_nothing.pkl", "wb") as file:
+        pickle.dump(do_nothing_always_data, file)
+    os.chdir(pwd)
+    print("Time to run five objective optimization neglecting uncertainty:", time_diff)
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("Finished running five objective optimization considering uncertainty")
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    # print("Running five objective objective optimization neglecting uncertainty")
+    # print("Running five objective objective optimization considering uncertainty")
+    return MU, LAMBDA, NGEN, CXPB, MUTPB
+
+
+# def run_baseline_runs_5objectives(
+#     dir_name,
+#     param_samples,
+#     pars,
+#     initial_state,
+#     MU: int,
+#     LAMBDA: int,
+#     NGEN: int,
+#     CXPB: float,
+#     MUTPB: float,
+#     seeds="Yes",
+# ):
+#     nourish_whenever_possible = [
+#         1 if i % 2 == 1 else 0 for i in range(pars["sim_length"])
+#     ]
+#     do_nothing_always = [0] * pars["sim_length"]
+#     pwd = os.getcwd()
+#     (
+#         npv_nourish_when_possible,
+#         benefits_nourish_when_possible,
+#         costs_nourish_when_possible,
+#         investment_costs_nourish_when_possible,
+#         damage_costs_nourish_when_possible,
+#         reliability_nourish_when_possible,
+#         bcr_nourish_when_possible,
+#         sows_bcr_pass_nourish_when_possible,
+#     ) = stress_test_strategy_to_states_of_the_world(
+#         nourish_whenever_possible, initial_state, param_samples, pars
+#     )
+#     (
+#         npv_do_nothing_always,
+#         benefits_do_nothing_always,
+#         costs_do_nothing_always,
+#         investment_costs_do_nothing_always,
+#         damage_costs_do_nothing_always,
+#         reliability_do_nothing_always,
+#         bcr_do_nothing_always,
+#         sows_bcr_pass_do_nothing_always,
+#     ) = stress_test_strategy_to_states_of_the_world(
+#         do_nothing_always, initial_state, param_samples, pars
+#     )
+#     if seeds == "Yes":
+#         strategy_seeds = []
+#         strategy_seeds.append(nourish_whenever_possible)
+#         strategy_seeds.append(do_nothing_always)
+#     else:
+#         strategy_seeds = []
+#     print("#########################################################")
+#     print("Running five objective optimization neglecting uncertainty")
+#     print("#########################################################")
+#     start_time = time.time()
+#     # Go one folder above the current directory
+#     parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+#     # Define the path to 'results_data/baseline_optimization_runs'
+#     target_dir = os.path.join(parent_dir, "results_data", "baseline_optimization_runs")
+#     # Define the folder to check/create
+#     final_folder = "2objective_no_uncertainty"
+#     final_path = os.path.join(target_dir, final_folder)
+#     # Create '2objective_no_uncertainty' if it doesn't exist
+#     if not os.path.exists(final_path):
+#         os.makedirs(final_path)
+#     # Change current working directory to the final path
+#     os.chdir(final_path)
+#     print("Current directory:", os.getcwd())
+#     pop, hof, hof_fitness, stats, logbook, all_generations, all_fitness = (
+#         run_genetic_algorithm_on_configuration_5_objectives(
+#             parameter_set, guess_strategy, MU, LAMBDA, NGEN, CXPB, MUTPB
+#         )
+#     )
+#     end_time = time.time()
+#     total_time = end_time - start_time
+#     os.chdir(pwd)
+#     print("Time to run five objective optimization neglecting uncertainty:", total_time)
+#     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+#     print("Finished running five objective optimization neglecting uncertainty")
+#     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+#     print("Transitioning......Transitioning......Transitioning........")
+#     print("##########################################################")
+#     print("Running five objective optimization considering uncertainty")
+#     print("##########################################################")
+#     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+#     print("Finished running five objective optimization considering uncertainty")
+#     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+#     # print("Running five objective objective optimization neglecting uncertainty")
+#     # print("Running five objective objective optimization considering uncertainty")
+#     return MU, LAMBDA, NGEN, CXPB, MUTPB
