@@ -373,7 +373,6 @@ def compute_coastal_state_variables(
     tau = X[:, 0]
     R = X[:, 2]
     nourishing = X[:, 3]
-    print(type(t))
 
     # Compute sea-level rise (L) and its integral (L_int)
     L = pars["a"] * t + pars["b"] * (t**2 + 2 * t * (pars["Ti"] - 1992))
@@ -503,9 +502,7 @@ def compute_coastal_cost_metrics(
              - damageCost (np.ndarray): damage cost
     :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
     """
-
     # Unpack columns of X
-    print(type(X))
     tau = X[:, 0]
     t = X[:, 1]
     R = X[:, 2]
