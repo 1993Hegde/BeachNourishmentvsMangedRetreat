@@ -42,7 +42,7 @@ with open(file2, "rb") as f:
 # print("NPV mazimizing Strategy", npv_maximizing_strategy)
 # print("USACE Strategy", usace_strategy)
 # max_npv_benefits, max_npv_costs = (
-#     evaluate_beach_bourishment_problem_on_strategy_best_guess_sow(
+#     evaluate_beach_nourishment_problem_on_strategy_best_guess_sow(
 #         npv_maximizing_strategy, all_parameters
 #     )
 # )
@@ -58,7 +58,7 @@ with open(file2, "rb") as f:
 # )
 
 # usace_benefits, usace_costs = (
-#     evaluate_beach_bourishment_problem_on_strategy_best_guess_sow(
+#     evaluate_beach_nourishment_problem_on_strategy_best_guess_sow(
 #         usace_strategy, all_parameters
 #     )
 # )
