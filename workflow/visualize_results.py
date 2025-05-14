@@ -68,3 +68,15 @@ plot_strategies(
     threshold_satisficing_strategy,
     robustness_satisficing_strategy,
 )
+plot_decision_convergence(baseline_directory)
+orig = os.getcwd()
+os.chdir(os.path.join("..", "results_data"))
+
+with (
+    open("threshold_satisficing_strategy.pickle", "wb") as f1,
+    open("robustness_satisficing_strategy.pickle", "wb") as f2,
+):
+    pickle.dump(threshold_satisficing_strategy, f1)
+    pickle.dump(robustness_satisficing_strategy, f2)
+
+os.chdir(orig)
