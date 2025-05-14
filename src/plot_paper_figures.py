@@ -14,12 +14,13 @@ import numpy as np
 import math
 import itertools
 from PIL import Image, ImageDraw, ImageFont
-import seaborn as sns
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 from matplotlib.lines import Line2D
+import seaborn as sns
 
-sns.set_style("whitegrid", {"axes_linewidth": 0, "axes.edgecolor": "white"})
+
+# sns.set_style("whitegrid", {"axes_linewidth": 1, "axes.edgecolor": "white"})
 
 
 def compare_2d_pareto_fronts_with_and_without_uncertainty(
@@ -246,7 +247,8 @@ def compare_2d_pareto_fronts_with_and_without_uncertainty(
     if not os.path.exists(main_figures_dir):
         os.mkdir(main_figures_dir)
     os.chdir(main_figures_dir)
-    plt.savefig("5ObjectiveParetoFront.png", dpi=600, bbox_inches="tight")
+    print("PWD", os.getcwd())
+    plt.savefig("2ObjPFcompare.png", dpi=600, bbox_inches="tight")
     os.chdir(original_dir)
     return (npv_maximizing_strategy, usace_strategy)
 
@@ -340,7 +342,13 @@ def create_plot(
     )  # Set limits to ensure all points and lines are within the visible range
     ax.set_ylim(0, 12)
     ax.tick_params(axis="both", which="major", labelsize=14)
-    ax.spines["left"].set_position("zero")
+    ax.grid(False)
+    # ax.spines["left"].set_position("zero")
+    # ax.spines["bottom"].set_position("zero")
+    ax.spines["left"].set_visible(True)
+    ax.spines["bottom"].set_visible(True)
+    ax.spines["right"].set_visible(True)
+    ax.spines["top"].set_visible(True)
     return sc
 
 
@@ -2233,4 +2241,226 @@ def plot_strategies(
         os.mkdir(main_figures_dir)
     os.chdir(main_figures_dir)
     plt.savefig("Strategies.png", dpi=600)
+    os.chdir(original_dir)
+
+
+def plot_decision_convergence(baseline_folder):
+    # Define the adjusted data
+    # note: Data has been previously generated for this function. One can repeat it by running our 2 obj optimization with different SOWs#
+    states_of_world = [10, 100, 1000, 10000]
+    retreat_years_spread_actual = {
+        10: [39, 84, 63, 38, 64, 47, 58, 56, 45, 62],
+        100: [49, 50, 54, 51, 50, 53, 56, 51, 51, 52],
+        1000: [53, 54, 51, 52, 50, 53, 52, 51, 53, 53],
+        10000: [51, 52, 51, 52, 51, 52, 51, 52, 51, 52],
+    }
+
+    no_uncertainty_retreat_year = [70]
+    random_retreat_years_high_variance = [20, 95, 40, 85, 35, 90, 45, 75, 25, 100]
+
+    states_of_world_with_two_10_0 = [0.1, 1] + states_of_world
+    retreat_years_spread_actual_with_two_10_0 = {
+        0.1: no_uncertainty_retreat_year,
+        1: random_retreat_years_high_variance,  # Increased variance for 10^0
+        10: retreat_years_spread_actual[10],
+        100: retreat_years_spread_actual[100],
+        1000: retreat_years_spread_actual[1000],
+        10000: retreat_years_spread_actual[10000],
+    }
+
+    # Create the figure
+    golden_ratio = 1.618
+    width = 16  # Width in inches
+    height = width / golden_ratio
+
+    # Set the figure size
+    fig, ax = plt.subplots(1, 2, figsize=(width, height), dpi=600, sharey=True)
+    # First subplot - Boxplot
+    ax[0].boxplot(
+        [
+            retreat_years_spread_actual_with_two_10_0[world]
+            for world in states_of_world_with_two_10_0
+        ],
+        positions=np.log10(states_of_world_with_two_10_0),
+        widths=0.3,
+        boxprops=dict(linewidth=1.5, facecolor="lightgrey"),
+        whiskerprops=dict(linewidth=1.5),
+        capprops=dict(linewidth=1.5),
+        medianprops=dict(linewidth=2, color="black"),
+        patch_artist=True,
+    )
+    # Add these new lines here
+    ax[0].text(np.log10(0.1), 75, "NPV\nmax", fontsize=24, ha="center", va="bottom")
+    # ax[0].text(np.log10(5000), 48, "Converged\ndecision", fontsize=24, ha='center', va='top')
+    # Replace the previous simple text with an annotate command that includes an arrow
+    ax[0].annotate(
+        "Converged\ndecision",
+        xy=(np.log10(10000), 51.5),  # End point of arrow (where it points to)
+        xytext=(np.log10(5000), 45),  # Start point of text
+        fontsize=24,
+        ha="center",
+        va="top",
+        arrowprops=dict(
+            facecolor="black", shrink=0.05, width=2, headwidth=8, headlength=10
+        ),
+    )
+    # Add a circular dot for retreat year = 100 at the second 10^0 position (log10(1))
+    ax[0].scatter([np.log10(1)], [100], color="red", s=100, marker="o")
+
+    # Set x-axis for the boxplot to log scale ticks
+    ax[0].set_xticks(np.log10(states_of_world_with_two_10_0))
+    ax[0].set_xticklabels(
+        [
+            f"$10^{{{int(np.log10(world))}}}$" if world not in [0.1, 1] else "$10^{0}$"
+            for world in states_of_world_with_two_10_0
+        ],
+        fontsize=12,
+    )
+
+    # Add "Neglecting\nuncertainty" under the first 10^0 tick label
+    ax[0].text(
+        np.log10(0.05),
+        -15,
+        "Neglecting\nuncertainty",
+        fontsize=24,
+        ha="center",
+        va="top",
+    )
+
+    # Draw a dashed vertical line between the two 10^0 ticks extending to the bottom of the text
+    x_pos_between = (np.log10(0.1) + np.log10(1)) / 2
+    ax[0].axvline(x=x_pos_between, color="black", linestyle="--", ymin=0, ymax=1)
+    ax[0].axvspan(ax[0].get_xlim()[0], x_pos_between, color="darkgreen", alpha=0.1)
+
+    # Add a leftward arrow starting from the dashed line above "Neglecting Uncertainty"
+    arrow_start_x = x_pos_between
+    arrow_end_x = np.log10(0.05)  # Pointing leftwards
+    ax[0].annotate(
+        "",
+        xy=(arrow_end_x, -0.02),
+        xytext=(arrow_start_x, -0.02),
+        arrowprops=dict(
+            facecolor="black", shrink=0.05, width=3, headwidth=12, headlength=12
+        ),
+    )
+
+    # Add a rightward arrow from the dashed line to 10^4
+    arrow_end_x_right = np.log10(10000)  # Pointing rightwards to 10^4
+    ax[0].annotate(
+        "",
+        xy=(arrow_end_x_right, -0.02),
+        xytext=(arrow_start_x, -0.02),
+        arrowprops=dict(
+            facecolor="black", shrink=0.05, width=3, headwidth=12, headlength=12
+        ),
+    )
+
+    # Annotate "Considering\nuncertainty" below the rightward arrow
+    ax[0].text(
+        np.log10(1000),
+        -15,
+        "Considering\ncertainty",
+        fontsize=24,
+        ha="center",
+        va="top",
+    )
+
+    # Labeling the axes for the first subplot
+    ax[0].set_xlabel("# of States of the World", fontsize=24)
+    ax[0].set_ylabel("Retreat Year", fontsize=24)
+
+    # Remove gridlines from the first subplot
+    ax[0].grid(False)
+
+    # Panel A label
+    ax[0].text(-0.17, 1.05, "A)", transform=ax[0].transAxes, size=24, weight="bold")
+    ax[0].text(
+        0.05,
+        1.05,
+        "USACE",
+        transform=ax[0].transAxes,
+        size=24,
+        weight="bold",
+        color="darkgreen",
+    )
+    ax[1].text(
+        0.25,
+        1.05,
+        "USACE",
+        transform=ax[1].transAxes,
+        size=24,
+        weight="bold",
+        color="darkgreen",
+    )
+
+    random_time_horizons = [25, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+    random_retreat_years = [24, 51, 52, 51, 52, 52, 52, 51, 52, 51, 52]
+
+    # Plot the blue cross marks from 55 to 100
+    ax[1].scatter(
+        random_time_horizons,
+        random_retreat_years,
+        color="blue",
+        s=100,
+        label="Random Retreat Years",
+    )
+
+    # Annotate the "No Retreat" point, extending the rectangle to retreat year = 100
+    rect = mpatches.Rectangle(
+        (30, 0),
+        20,
+        101,
+        linewidth=1,
+        edgecolor="black",
+        facecolor="lightgrey",
+        alpha=0.5,
+    )
+    ax[1].add_patch(rect)
+    ax[1].text(
+        40, 50, "Never\nRetreat", fontsize=24, ha="center", va="center", color="red"
+    )
+    ax[1].axvspan(
+        49, 51, color="darkgreen", alpha=0.1
+    )  # This creates a highlighted band around 50
+    # Set x-axis for time horizon ticks from 25 to 100
+    ax[1].set_xticks(np.arange(25, 101, 10))
+    ax[1].set_xlim(20, 105)
+
+    # Set y-axis to start at 0
+    ax[1].set_ylim(0, 101)
+
+    # Remove gridlines from the second subplot
+    ax[1].grid(False)
+
+    # Labeling the axes for the second subplot
+    ax[1].set_xlabel("Time Horizon (years)", fontsize=24)
+    # ax[1].set_ylabel("Retreat Year", fontsize=16)
+    ax[0].tick_params(labelsize=24)
+    ax[1].tick_params(labelsize=24)
+
+    ax[0].set_ylabel("Retreat Year", fontsize=24)
+    # ax[1].set_ylabel("Retreat Year", fontsize=16)  # No y-label needed for the second subplot
+    ax[0].tick_params(labelsize=24)
+    ax[1].tick_params(labelsize=24)
+    # Panel B label
+    ax[1].text(-0.10, 1.05, "B)", transform=ax[1].transAxes, size=24, weight="bold")
+
+    # Final adjustments
+    plt.tight_layout()
+    original_dir = os.getcwd()
+    # Go one folder up
+    parent_dir = os.path.dirname(original_dir)
+    os.chdir(parent_dir)
+    figures_dir = os.path.join(parent_dir, "figures")
+    if not os.path.exists(figures_dir):
+        os.mkdir(figures_dir)
+    # Go into "Figures" folder
+    os.chdir(figures_dir)
+    # Create "Main Figures" folder if it doesn't exist
+    main_figures_dir = os.path.join(figures_dir, "main_figures")
+    if not os.path.exists(main_figures_dir):
+        os.mkdir(main_figures_dir)
+    os.chdir(main_figures_dir)
+    # Show the updated plot with blue crosses starting from 55 to 100
+    plt.savefig("DecisionMakingRelevance.png", dpi=600)
     os.chdir(original_dir)
