@@ -74,7 +74,7 @@ with open(file2, "rb") as f:
 # )
 evaluations_per_generation = 10000
 number_of_offspring = 10000
-number_of_generations = 50
+number_of_generations = 1
 crossover_probability = 0.6
 mutation_probability = 0.3
 MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_2objectives(
@@ -92,7 +92,7 @@ MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_2objectives(
 
 evaluations_per_generation = 10000
 number_of_offspring = 10000
-number_of_generations = 100
+number_of_generations = 1
 crossover_probability = 0.6
 mutation_probability = 0.3
 MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_5objectives(
