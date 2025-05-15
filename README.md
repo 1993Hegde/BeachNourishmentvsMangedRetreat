@@ -33,8 +33,9 @@ To reproduce:
    
     e) Change to the workflow directory with `cd workflow`.
    
-    f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you cah choose to run them one after another.
+    f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you can choose to run them one after another.
 
+The high-leve functionality of each script is mentioned below:
 | Script Name | Description |
 | --- | --- |
 | `python id_benchmark_decisions.py` | Run discrete dynamic program for best guess parameter values, identify NPX Maximizing strategy and USACE approximation| 
