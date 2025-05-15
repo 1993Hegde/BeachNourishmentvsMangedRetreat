@@ -20,7 +20,7 @@ initial_state = (0, 0, 0, 0)
         initial_state,
     )
 )
-# generate_multi_axis_parallel_plots_with_satisficing_strategies(baseline_directory)
+generate_multi_axis_parallel_plots_with_satisficing_strategies(baseline_directory)
 threshold_satisficing_strategy, robustness_satisficing_strategy = (
     identify_satisfycing_strategies(baseline_directory)
 )
