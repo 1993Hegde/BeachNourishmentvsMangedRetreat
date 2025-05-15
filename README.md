@@ -22,12 +22,12 @@ You can follow the instructions below to reproduce all results reported in the m
 To reproduce:
 1. Clone this repository into a local directory.
 2. Get your environment ready. We recommend using `mamba`.
-   a) Change directory to env with `cd env`.
-   b) Run mamba `env create -f env.yml` or replace `mamba` with `conda`.
-   c) Once this is complete, run `mamba activate bn_test`.
-   d) Change to the main directory using `cd ..`.
-   e) Change to the workflow directory with `cd workflow`.
-   f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you cah choose to run them one after another.
+    a) Change directory to env with `cd env`.
+    b) Run mamba `env create -f env.yml` or replace `mamba` with `conda`.
+    c) Once this is complete, run `mamba activate bn_test`.
+    d) Change to the main directory using `cd ..`.
+    e) Change to the workflow directory with `cd workflow`.
+    f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you cah choose to run them one after another.
 
 
 Please contact [Email Me](mailto:Prabhat.Hegde.TH@dartmouth.edu) if you have any problems following these instructions. 
