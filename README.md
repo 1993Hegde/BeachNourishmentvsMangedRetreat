@@ -36,6 +36,6 @@ To reproduce:
     f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you cah choose to run them one after another.
 
 
-Please contact [Email Me](mailto:Prabhat.Hegde.TH@dartmouth.edu) if you have any problems following these instructions. 
+Please contact [Prabhat Hegde](mailto:Prabhat.Hegde.TH@dartmouth.edu) if you have any problems following these instructions. 
 
 
