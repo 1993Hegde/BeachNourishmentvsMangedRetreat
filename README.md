@@ -39,7 +39,7 @@ The high-leve functionality of each script is mentioned below:
 | Script Name | Description |
 | --- | --- |
 | `python id_benchmark_decisions.py` | Run discrete dynamic program for best guess parameter values, identify NPX Maximizing strategy and USACE approximation| 
-| `mordm_analyses.py` | Runs Multi Objective Optimization for 2 and 3 objectives, with and without uncertainty |
+| `mordm_analyses.py` | Runs Multi Objective Optimization for 2 and 5 objectives, with and without uncertainty |
 | `visualize_results.py` | Generates all the figures reported in the paper |
 
 Please contact [Prabhat.Hegde.TH@dartmouth.edu](mailto:Prabhat.Hegde.TH@dartmouth.edu) if you have any problems following these instructions. 
