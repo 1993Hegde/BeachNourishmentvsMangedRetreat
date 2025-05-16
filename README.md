@@ -20,10 +20,7 @@ For a coastal town, the key uncertainties considered, observed state variables, 
 
 <img src="https://github.com/1993Hegde/BeachNourishmentvsMangedRetreat/blob/91ccd005cb76555a4fd6546c68d3164f870eda00/F1_SystemRelationships.jpeg" alt="image_alt" width="700" />
 
-For comparison, the system relationships are consistent with <u><em>Cutler, E.M., Albert, M.R. and White, K.D., 2020. Tradeoffs between beach nourishment and managed retreat: Insights from dynamic programming for climate adaptation decisions. Environmental Modelling & Software, 125, p.104603.</em></u> [1] [2].
-
-[1]: https://www.sciencedirect.com/science/article/pii/S1364815219303639
-[2]: https://github.com/emcutler/coastal-management
+For comparison, the system relationships are consistent with <u><em>Cutler, E.M., Albert, M.R. and White, K.D., 2020. Tradeoffs between beach nourishment and managed retreat: Insights from dynamic programming for climate adaptation decisions. <em>Environmental Modelling & Software, 125, p.104603.</em></em></u><sup><a href="https://www.sciencedirect.com/science/article/pii/S1364815219303639">[1]</a></sup><sup><a href="https://github.com/emcutler/coastal-management">[2]</a></sup>.
 ## Reproduce our experiment
 You can follow the instructions below to reproduce all results reported in the manuscript and supplementary materials. For this experiment, reproduction does not imply bit-wise reproducibility. You should obtain similar quantitative results and figures, with all metrics within a tolerance of 5%. 
 
