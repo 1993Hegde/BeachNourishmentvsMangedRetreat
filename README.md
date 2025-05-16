@@ -16,8 +16,14 @@ Many coastal towns rely on cyclical beach nourishment to mitigate erosion risks.
 ## Overview of this repository
 This repository includes the code and instructions for reproducing the main analysis in the paper <u>*Considering retreat can be crucial to design robust adaptation strategies in nourishment-dependent coastal communities.*</u>.
 
+For a coastal town, the key uncertainties considered, observed state variables, metrics of innterest and their dependencies are mapped in the systems diagram below. 
+
 <img src="https://github.com/1993Hegde/BeachNourishmentvsMangedRetreat/blob/91ccd005cb76555a4fd6546c68d3164f870eda00/F1_SystemRelationships.jpeg" alt="image_alt" width="700" />
 
+For comparison, the system relationships are consistent with <u><em>Cutler, E.M., Albert, M.R. and White, K.D., 2020. Tradeoffs between beach nourishment and managed retreat: Insights from dynamic programming for climate adaptation decisions. Environmental Modelling & Software, 125, p.104603.</em></u> [1] [2].
+
+[1]: https://www.sciencedirect.com/science/article/pii/S1364815219303639
+[2]: https://github.com/emcutler/coastal-management
 ## Reproduce our experiment
 You can follow the instructions below to reproduce all results reported in the manuscript and supplementary materials. For this experiment, reproduction does not imply bit-wise reproducibility. You should obtain similar quantitative results and figures, with all metrics within a tolerance of 5%. 
 
