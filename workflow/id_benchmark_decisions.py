@@ -1,4 +1,7 @@
 import sys
+import warnings
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, "../src")  # Adjust the path to import from the src directory
 from decision_benchmarks import *

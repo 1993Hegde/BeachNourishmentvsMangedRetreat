@@ -1,5 +1,8 @@
 import sys
 import os
+import warnings
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, "../src")  # Adjust the path to import from the src directory
 from mordm_functions import *
@@ -74,7 +77,7 @@ print(
 )
 evaluations_per_generation = 10000
 number_of_offspring = 10000
-number_of_generations = 1
+number_of_generations = 100
 crossover_probability = 0.6
 mutation_probability = 0.3
 MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_2objectives(
@@ -92,7 +95,7 @@ MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_2objectives(
 
 evaluations_per_generation = 10000
 number_of_offspring = 10000
-number_of_generations = 1
+number_of_generations = 150
 crossover_probability = 0.6
 mutation_probability = 0.3
 MU, LAMBDA, NGEN, CXPB, MUTPB = run_baseline_runs_5objectives(

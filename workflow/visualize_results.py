@@ -1,5 +1,8 @@
 import sys
 import os
+import warnings
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, "../src")  # Adjust the path to import from the src director
 from plot_paper_figures import *

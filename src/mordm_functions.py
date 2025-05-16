@@ -1041,7 +1041,7 @@ def run_baseline_runs_2objectives(
         1 if i % 2 == 1 else 0 for i in range(pars["sim_length"])
     ]
 
-    othing_always = [0] * pars["sim_length"]
+    do_nothing_always = [0] * pars["sim_length"]
     pwd = os.getcwd()
     (
         npv_nourish_when_possible,
