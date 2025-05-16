@@ -11,6 +11,37 @@ Prabhat Hegde <sup> 1 *</sup>, Adam Pollack <sup>1</sup>, Vikrant Vaze <sup>1</s
 
 ## Abstract
 
-Many coastal towns rely on beach nourishment to mitigate erosion risks. However, rising flood risks threaten the long-term viability of this nourishment strategy. Some nourishment-dependent towns may  not be able to invest in costly sustained beach nourishments and may need to retreat. This raises the complicated question: What is the right time for a nourishment-dependent town to trigger retreat?  Here, we design and implement a framework to identify adaptive and Pareto-optimal retreat timings that account for geophysical and socioeconomic uncertainties. In our case study, retreat is crucial to robustly meet multiple objectives, including meeting regulatory benefit-cost thresholds. We demonstrate that prominent decision-making frameworks in planning and research can overlook important trade-offs and lead to myopic retreat decisions. Our framework can help planners devise more robust long-term adaptation strategies.
+Many coastal towns rely on cyclical beach nourishment to mitigate erosion risks. However, rising flood risks threaten the long-term viability of this nourishment strategy. This raises the question: When to  retreat? Decision making agencies and research on decision frameworks largely overlook this question, neglecting key considerations such as uncertainties that affect optimal timing and navigating trade-offs between multiple objectives.  We address this previously overlooked question by designing and implementing a framework that identifies Pareto-optimal strategies balancing multiple objectives under uncertainty, demonstrated through a case study. Our results show that neglecting retreat as a planning lever makes it impossible to balance multiple objectives and meet the regulatory benefit-cost threshold. Furthermore, accounting for uncertainty necessitates retreat at least two decades earlier than deterministic approaches to meet the benefit-cost threshold. Our framework can help planners devise more robust long-term adaptation strategies by informing the choice of if and when to retreat. 
+
+## Overview of this repository
+This repository includes the code and instructions for reproducing the main analysis in the paper Considering retreat can be crucial to design robust adaptation strategies in nourishment-dependent coastal communities.
+
+## Reproduce our experiment
+You can follow the instructions below to reproduce all results reported in the manuscript and supplementary materials. For this experiment, reproduction does not imply bit-wise reproducibility. You should obtain similar quantitative results and figures, with all metrics within a tolerance of 5%. 
+
+To reproduce:
+1. Clone this repository into a local directory.
+2. Get your environment ready. We recommend using `mamba`.
+   
+    a) Change directory to env with `cd env`.
+   
+    b) Run mamba `env create -f env.yml` or replace `mamba` with `conda`.
+   
+    c) Once this is complete, run `mamba activate bn_test`.
+   
+    d) Change to the main directory using `cd ..`.
+   
+    e) Change to the workflow directory with `cd workflow`.
+   
+    f) Run all the three python files in this folder in sequence with `python id_benchmark_decisions.py && python mordm_analyses.py && python visualize_results.py`. Alternatively, you can choose to run them one after another.
+
+The high-leve functionality of each script is mentioned below:
+| Script Name | Description |
+| --- | --- |
+| `python id_benchmark_decisions.py` | Run discrete dynamic program for best guess parameter values, identify NPX Maximizing strategy and USACE approximation| 
+| `mordm_analyses.py` | Runs Multi Objective Optimization for 2 and 5 objectives, with and without uncertainty |
+| `visualize_results.py` | Generates all the figures reported in the paper |
+
+Please contact [Prabhat.Hegde.TH@dartmouth.edu](mailto:Prabhat.Hegde.TH@dartmouth.edu) if you have any problems following these instructions. 
 
 

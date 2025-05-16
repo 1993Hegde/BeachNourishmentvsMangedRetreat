@@ -1082,7 +1082,7 @@ def custom_parallel_coordinates(
 
     ### colorbar for continuous legend
     if color_by_continuous is not None:
-        print("Yes!")
+        print("Color not by continuous - Ignore log")
         # cmap = cm.get_cmap(color_palette_continuous)
         # cmap = mcolors.ListedColormap(cmap(np.linspace(0, 1, 256)))
         # cmap.set_over('deepskyblue')  # Set the color for values > 100
@@ -1259,7 +1259,7 @@ def identify_satisfycing_strategies(baseline_directory):
     robustness_satisficing_strategy = list(
         empty_df.loc[empty_df["NPV"] == max_npv, "strategy"]
     )[0]
-    print(robustness_satisficing_strategy)
+    print("Robustness satisficing strategy", robustness_satisficing_strategy)
     os.chdir(pwd)
     # Read in pareto front considering uncertainty
     pwd = os.getcwd()
