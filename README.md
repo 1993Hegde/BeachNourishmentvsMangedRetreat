@@ -1,6 +1,6 @@
 # Hegde-etal_2025
 
-## Considering retreat can lead to more robust adaptation strategies in nourishment-dependent coastal communities
+## Timing Managed Retreat for Robust Coastal Adaptation Strategies
 
 
 Prabhat Hegde <sup> 1 *</sup>, Adam Pollack <sup>1</sup>, Vikrant Vaze <sup>1</sup>, Klaus Keller <sup>1</sup>
