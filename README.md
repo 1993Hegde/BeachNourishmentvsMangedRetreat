@@ -24,6 +24,8 @@ For comparison, the system relationships are consistent with <u><em>Cutler, Emma
 
 A detailed shoreline protection plan proposed by the U.S. Army Corps of Engineers for the location used in the case study, please refer to <u><em>District, USACE Jacksonville. "St. Lucie County, Florida. Coastal Storm Risk Management Project. Final Integrated Feasibility Study and Environmental Assessment." US Army Corps of Engineers, Jacksonville District, Jacksonville, Florida (2017).</em></u><sup><a href="https://www.saj.usace.army.mil/Missions/Civil-Works/Shore-Protection/St-Lucie-County/">[3]</a></sup>
 
+> **Note:** To use this decision-making framework for a different coastal town, modify the default parameter settings in the `baseline_model_instance_with_default_parameters` function located in [`src/decision_benchmarks.py`](src/decision_benchmarks.py).
+> 
 ## Reproduce our experiment
 You can follow the instructions below to reproduce all results reported in the manuscript and supplementary materials. For this experiment, reproduction does not imply bit-wise reproducibility. You should obtain similar quantitative results and figures, with all metrics within a tolerance of 3%. 
 
